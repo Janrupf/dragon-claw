@@ -1,0 +1,8 @@
+syntax = "proto3";
+package net.janrupf.dc;
+
+import "google/protobuf/empty.proto";
+
+service DragonClawAgent {
+  rpc ShutdownSystem(google.protobuf.Empty) returns (google.protobuf.Empty);
+}

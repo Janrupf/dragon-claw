@@ -1,10 +1,12 @@
-use std::time::Duration;
+use tonic::transport::Server;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
 use crate::net::discovery::DiscoveryServer;
+use crate::proto::{DragonClawAgentImpl, DragonClawAgentServer};
 
 mod net;
+mod proto;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
@@ -24,5 +26,21 @@ async fn main() {
     let discovery_server = DiscoveryServer::start().await.ok();
     if discovery_server.is_none() {
         tracing::warn!("failed to start discovery server, discovery will be unavailable");
+    }
+
+    tracing::info!("Starting RPC...");
+    let server_future = Server::builder()
+        .add_service(DragonClawAgentServer::new(DragonClawAgentImpl::new()))
+        .serve("0.0.0.0:4455".parse().unwrap());
+
+    let ctrl_c_future = tokio::signal::ctrl_c();
+
+    tokio::select! {
+        res = server_future => {
+            tracing::error!("RPC server stopped unexpectedly: {:?}", res);
+        }
+        _ = ctrl_c_future => {
+            tracing::info!("Received Ctrl+C, shutting down...");
+        }
     }
 }

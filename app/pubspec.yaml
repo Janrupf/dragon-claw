@@ -35,6 +35,9 @@ dependencies:
   nsd: ^2.3.1
   logging: ^1.2.0
 
+  grpc: ^3.2.3
+  protobuf: ^3.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

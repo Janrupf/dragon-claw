@@ -1,5 +1,6 @@
 import 'package:dragon_claw/discovery/discovery.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 class DiscoveryList extends StatefulWidget {
   const DiscoveryList({super.key});
@@ -57,7 +58,9 @@ class _DiscoveryListState extends State<DiscoveryList> {
     return ListTile(
       title: Text(agent.name),
       subtitle: Text(agent.address.address),
-      onTap: () {},
+      onTap: () {
+        context.push("/control", extra: agent);
+      },
     );
   }
 }

@@ -5,6 +5,10 @@ use thiserror::Error;
 #[path = "linux/mod.rs"]
 mod platform;
 
+#[cfg(windows)]
+#[path = "windows/mod.rs"]
+mod platform;
+
 #[derive(Debug)]
 pub struct PlatformAbstraction {
     platform: platform::PlatformAbstractionImpl,

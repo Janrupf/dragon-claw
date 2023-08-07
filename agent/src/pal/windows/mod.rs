@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::net::SocketAddr;
 use thiserror::Error;
-use windows::core::{Error as Win32Error, PWSTR};
+use windows::core::{Error as Win32Error, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{
     DNS_REQUEST_PENDING, ERROR_MORE_DATA, ERROR_SUCCESS, HANDLE, WIN32_ERROR,
 };
@@ -13,8 +13,87 @@ pub struct PlatformAbstractionImpl;
 
 impl PlatformAbstractionImpl {
     pub async fn new() -> Result<Self, PlatformAbstractionError> {
-        // Nothing special to do here
+        Self::acquire_privileges();
         Ok(Self)
+    }
+
+    fn acquire_privileges() {
+        use windows::Win32::Security as security;
+        use windows::Win32::System::Threading as threading;
+
+        unsafe {
+            let current_process = threading::GetCurrentProcess();
+            let mut current_token = HANDLE(0);
+
+            // Get our own process token so we can adjust privileges on it
+            if !threading::OpenProcessToken(
+                current_process,
+                security::TOKEN_ADJUST_PRIVILEGES | security::TOKEN_QUERY,
+                &mut current_token,
+            )
+            .as_bool()
+            {
+                let err = Win32Error::from_win32();
+                tracing::error!("Failed to open own process token: {}", err);
+                return;
+            }
+
+            tracing::trace!("Opened own process token: {:?}", current_token);
+
+            // Technically this loop could adjust multiple privileges with a single call to
+            // AdjustTokenPrivileges - but since the TOKEN_PRIVILEGE structure is defined in a very
+            // idiotic way by MS (array of size 1), we just iterator over the privileges and call
+            // the function foreach privilege separately
+            let privileges_to_acquire = [security::SE_SHUTDOWN_NAME];
+            for to_acquire in privileges_to_acquire {
+                let mut privilege = security::TOKEN_PRIVILEGES {
+                    PrivilegeCount: 1,
+                    Privileges: [security::LUID_AND_ATTRIBUTES {
+                        Luid: Default::default(),
+                        Attributes: security::SE_PRIVILEGE_ENABLED,
+                    }],
+                };
+
+                // Attempt to look up the privilege LUID
+                if !security::LookupPrivilegeValueW(
+                    PCWSTR::null(),
+                    to_acquire,
+                    &mut privilege.Privileges[0].Luid,
+                )
+                .as_bool()
+                {
+                    let err = Win32Error::from_win32();
+                    tracing::warn!(
+                        "Failed to look up privilege {}: {}",
+                        to_acquire.display(),
+                        err
+                    );
+                    continue;
+                }
+                // Now adjust the privilege
+                if !security::AdjustTokenPrivileges(
+                    current_token,
+                    false,
+                    Some(&privilege),
+                    0,
+                    None,
+                    None,
+                )
+                .as_bool()
+                {
+                    let err = Win32Error::from_win32();
+                    tracing::warn!(
+                        "Failed to adjust privilege {}: {}",
+                        to_acquire.display(),
+                        err
+                    );
+                } else {
+                    tracing::trace!("Acquired privilege {}", to_acquire.display());
+                }
+            }
+
+            tracing::debug!("Adjusted privileges!");
+        }
     }
 
     pub async fn advertise_service(
@@ -190,7 +269,28 @@ impl PlatformAbstractionImpl {
     }
 
     pub async fn shutdown_system(&self) -> Result<(), PlatformAbstractionError> {
-        Err(PlatformAbstractionError::Unsupported)
+        unsafe {
+            use windows::Win32::System::Shutdown as shtdn;
+
+            if !shtdn::InitiateSystemShutdownExW(
+                PCWSTR::null(),
+                PCWSTR::null(),
+                5, // This should give us a chance to send the response over RPC
+                true,
+                false,
+                shtdn::SHTDN_REASON_MAJOR_OTHER
+                    | shtdn::SHTDN_REASON_MINOR_OTHER
+                    | shtdn::SHTDN_REASON_FLAG_PLANNED,
+            )
+            .as_bool()
+            {
+                let err = Win32Error::from_win32();
+                tracing::error!("Failed to initiate a system shutdown: {}", err);
+                return Err(PlatformError::Win32(err).into());
+            }
+        }
+
+        Ok(())
     }
 }
 

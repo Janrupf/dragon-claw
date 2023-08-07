@@ -1,3 +1,5 @@
+#![allow(clippy::too_many_arguments)]
+
 use zbus::zvariant::Optional;
 
 #[zbus::dbus_proxy(

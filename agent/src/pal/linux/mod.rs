@@ -1,6 +1,8 @@
 mod avahi;
+mod login1;
 
 use crate::pal::platform::avahi::AvahiServer2Proxy;
+use crate::pal::platform::login1::Login1ManagerProxy;
 use crate::pal::PlatformAbstractionError;
 use futures_util::FutureExt;
 use std::borrow::Cow;
@@ -23,6 +25,7 @@ macro_rules! dbus_call {
 pub struct PlatformAbstractionImpl {
     dbus_system_connection: zbus::Connection,
     avahi: Option<AvahiServer2Proxy<'static>>,
+    login1manager: Option<Login1ManagerProxy<'static>>,
 }
 
 impl PlatformAbstractionImpl {
@@ -52,9 +55,23 @@ impl PlatformAbstractionImpl {
             }
         };
 
+        // Connect to Login1 Manager
+        let login1manager = match dbus_call!(Login1ManagerProxy::new(&dbus_system_connection)).await
+        {
+            Ok(v) => Some(v),
+            Err(err) => {
+                tracing::warn!(
+                    "Failed to connect to Login1 Manager, shutdown will be unavailable: {}",
+                    err
+                );
+                None
+            }
+        };
+
         Ok(Self {
             dbus_system_connection,
             avahi,
+            login1manager,
         })
     }
 
@@ -103,7 +120,31 @@ impl PlatformAbstractionImpl {
     }
 
     pub async fn shutdown_system(&self) -> Result<(), PlatformAbstractionError> {
-        Err(PlatformAbstractionError::Unsupported)
+        let login1manager = match self.login1manager.as_ref() {
+            Some(v) => v,
+            None => return Err(PlatformAbstractionError::Unsupported),
+        };
+
+        let can_power_off = dbus_call!(login1manager.can_power_off()).await?;
+        if can_power_off != "yes" {
+            // For now we fail, technically "challenge" could also be an acceptable answer
+            // but this would require prompting the user for confirmation, which is hard to do
+            // since this is a background service.
+            tracing::error!("CanPowerOff returned {}", can_power_off);
+            return Err(PlatformAbstractionError::Unsupported);
+        }
+
+        tracing::info!("Shutting down system");
+        // Delay the future for 1 second to give the caller a chance to return a response
+        // before we shut down the system.
+        let login1manager = login1manager.clone();
+
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let _ = login1manager.power_off(false).await;
+        });
+
+        Ok(())
     }
 }
 

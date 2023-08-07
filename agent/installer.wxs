@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='utf-8'?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui" RequiredVersion="4.0">
+    <Package Manufacturer="Janrupf" Name="DragonClawAgent" Version="0.1.0"
+             UpgradeCode="E90060D9-3880-44B9-8E79-561650A74D1E">
+        <Media Id="1" Cabinet="dragon-claw-agent.cab" CompressionLevel="high" EmbedCab="yes"/>
+        <StandardDirectory Id="ProgramFiles64Folder">
+            <Directory Id="INSTALLDIR" Name="DragonClawAgent">
+                <Component Id="DragonClawAgent" Bitness="always64">
+                    <File Id="DragonClawAgentEXE" Name="dragon-claw-agent.exe" DiskId="1"
+                          Source="target\release\dragon-claw-agent.exe" KeyPath="yes"/>
+                    <ServiceInstall Name="DragonClawAgent" Type="ownProcess" Start="auto" ErrorControl="ignore"
+                                    DisplayName="Dragon Claw Agent"
+                                    Description="The agent which allows remote control via the Dragon Claw App"/>
+                    <ServiceControl Name="DragonClawAgent" Remove="uninstall" Start="install" Stop="uninstall"
+                                    Wait="yes"/>
+                </Component>
+            </Directory>
+        </StandardDirectory>
+
+        <Feature Id="Complete" Title="DragonClawAgent" Description="The main agent executable" AllowAdvertise="no"
+                 AllowAbsent="no" Level="1" ConfigurableDirectory="INSTALLDIR">
+            <ComponentRef Id="DragonClawAgent"/>
+        </Feature>
+
+        <InstallExecuteSequence>
+            <RemoveExistingProducts After="InstallInitialize"/>
+        </InstallExecuteSequence>
+
+        <ui:WixUI Id="WixUI_FeatureTree"/>
+    </Package>
+</Wix>

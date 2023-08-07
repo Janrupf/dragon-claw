@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use crate::net::discovery::DiscoveryError;
+use std::borrow::Cow;
 use std::fmt::Debug;
 use std::time::Duration;
 use zbus::zvariant::Optional;
@@ -57,6 +58,14 @@ impl DiscoveryServer {
             }
         };
 
+        let host_name = match avahi_call!(proxy.get_host_name()) {
+            Ok(v) => Cow::Owned(v),
+            Err(err) => {
+                tracing::warn!("Failed to get host name: {}", err);
+                Cow::Borrowed("Dragon Claw Computer")
+            }
+        };
+
         let group = match avahi_call!(proxy.entry_group_new()) {
             Ok(v) => v,
             Err(err) => {
@@ -69,8 +78,8 @@ impl DiscoveryServer {
             -1,
             -1,
             0,
-            "dragon-claw",
-            "_http._tcp",
+            &host_name,
+            "_dragon-claw._tcp",
             None.into(),
             None.into(),
             8080,
@@ -96,6 +105,8 @@ impl DiscoveryServer {
 )]
 trait AvahiServer2 {
     async fn get_version_string(&self) -> zbus::Result<String>;
+
+    async fn get_host_name(&self) -> zbus::Result<String>;
 
     #[dbus_proxy(object = "AvahiEntryGroup")]
     async fn entry_group_new(&self);

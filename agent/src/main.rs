@@ -5,10 +5,9 @@ use tonic::transport::Server;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-use crate::net::discovery::{DiscoveryData, DiscoveryServer};
 use crate::proto::{DragonClawAgentImpl, DragonClawAgentServer};
 
-mod net;
+mod pal;
 mod proto;
 
 #[tokio::main(flavor = "current_thread")]
@@ -25,6 +24,15 @@ async fn main() {
         env!("CARGO_PKG_VERSION")
     );
     tracing::info!("Starting agent...");
+
+    tracing::debug!("Creating platform abstraction layer...");
+    let pal = match pal::PlatformAbstraction::new().await {
+        Ok(v) => v,
+        Err(err) => {
+            tracing::error!("Failed to create platform abstraction layer: {}", err);
+            return;
+        }
+    };
 
     tracing::debug!("Binding TCP listener...");
     let any_host = Ipv4Addr::new(0, 0, 0, 0);
@@ -48,11 +56,11 @@ async fn main() {
 
     tracing::debug!("Listening on {}", local_addr);
 
-    let discovery_server = DiscoveryServer::start(DiscoveryData { addr: local_addr })
-        .await
-        .ok();
-    if discovery_server.is_none() {
-        tracing::warn!("failed to start discovery server, discovery will be unavailable");
+    if let Err(err) = pal.advertise_service(local_addr).await {
+        tracing::warn!(
+            "Failed to advertise service, discovery not available: {}",
+            err
+        );
     }
 
     let incoming = match TcpIncoming::from_listener(listener, true, None) {
@@ -65,7 +73,7 @@ async fn main() {
 
     tracing::info!("Starting RPC...");
     let server_future = Server::builder()
-        .add_service(DragonClawAgentServer::new(DragonClawAgentImpl::new()))
+        .add_service(DragonClawAgentServer::new(DragonClawAgentImpl::new(pal)))
         .serve_with_incoming(incoming);
 
     let ctrl_c_future = tokio::signal::ctrl_c();

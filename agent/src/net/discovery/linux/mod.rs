@@ -1,6 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::net::discovery::DiscoveryError;
+use crate::net::discovery::{DiscoveryData, DiscoveryError};
 use std::borrow::Cow;
 use std::fmt::Debug;
 use std::time::Duration;
@@ -28,7 +28,7 @@ pub struct DiscoveryServer {
 impl DiscoveryServer {
     /// Starts a new discovery server.
     #[tracing::instrument]
-    pub async fn start() -> Result<Self, DiscoveryError> {
+    pub async fn start(data: DiscoveryData) -> Result<Self, DiscoveryError> {
         let connection = match zbus::Connection::system().await {
             Ok(v) => v,
             Err(err) => {
@@ -75,14 +75,14 @@ impl DiscoveryServer {
         };
 
         if let Err(err) = avahi_call!(group.add_service(
-            -1,
-            -1,
+            -1, // All interfaces
+            0,  // IPv4
             0,
             &host_name,
             "_dragon-claw._tcp",
             None.into(),
             None.into(),
-            8080,
+            data.addr.port(),
             &[],
         )) {
             tracing::error!("Failed to add service: {}", err);

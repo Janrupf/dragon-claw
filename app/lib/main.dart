@@ -6,6 +6,18 @@ void main() {
   Logger.root.level = Level.ALL;
   Logger.root.onRecord.listen((record) {
     print("${record.level.name}: ${record.time}: ${record.message}");
+
+    if (record.error != null) {
+      print(record.error);
+    }
+
+    if (record.stackTrace != null) {
+      final trace = record.stackTrace.toString();
+
+      if (trace.isNotEmpty) {
+        print("Stacktrace: $trace");
+      }
+    }
   });
 
   runApp(const MyApp());

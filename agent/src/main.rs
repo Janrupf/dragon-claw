@@ -1,8 +1,11 @@
+use std::net::{Ipv4Addr, SocketAddrV4};
+use tokio::net::TcpListener;
+use tonic::transport::server::TcpIncoming;
 use tonic::transport::Server;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-use crate::net::discovery::DiscoveryServer;
+use crate::net::discovery::{DiscoveryData, DiscoveryServer};
 use crate::proto::{DragonClawAgentImpl, DragonClawAgentServer};
 
 mod net;
@@ -23,15 +26,47 @@ async fn main() {
     );
     tracing::info!("Starting agent...");
 
-    let discovery_server = DiscoveryServer::start().await.ok();
+    tracing::debug!("Binding TCP listener...");
+    let any_host = Ipv4Addr::new(0, 0, 0, 0);
+    let socket_addr = SocketAddrV4::new(any_host, 0);
+
+    let listener = match TcpListener::bind(socket_addr).await {
+        Ok(v) => v,
+        Err(err) => {
+            tracing::error!("Failed to bind TCP listener: {}", err);
+            return;
+        }
+    };
+
+    let local_addr = match listener.local_addr() {
+        Ok(v) => v,
+        Err(err) => {
+            tracing::error!("Failed to get local address: {}", err);
+            return;
+        }
+    };
+
+    tracing::debug!("Listening on {}", local_addr);
+
+    let discovery_server = DiscoveryServer::start(DiscoveryData { addr: local_addr })
+        .await
+        .ok();
     if discovery_server.is_none() {
         tracing::warn!("failed to start discovery server, discovery will be unavailable");
     }
 
+    let incoming = match TcpIncoming::from_listener(listener, true, None) {
+        Ok(v) => v,
+        Err(err) => {
+            tracing::error!("Failed to configure incoming listener: {}", err);
+            return;
+        }
+    };
+
     tracing::info!("Starting RPC...");
     let server_future = Server::builder()
         .add_service(DragonClawAgentServer::new(DragonClawAgentImpl::new()))
-        .serve("0.0.0.0:4455".parse().unwrap());
+        .serve_with_incoming(incoming);
 
     let ctrl_c_future = tokio::signal::ctrl_c();
 

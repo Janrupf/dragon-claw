@@ -125,6 +125,10 @@ async fn runner(
     }
 
     pal.set_status(ApplicationStatus::Stopping).await;
+    
+    if let Err(err) = pal.stop_advertising_service().await {
+        tracing::warn!("Failed to stop advertising service: {}", err);
+    }
 
     Ok(())
 }

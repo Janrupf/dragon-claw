@@ -8,9 +8,10 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::System::Services::{
     RegisterServiceCtrlHandlerExW, SetServiceStatus, StartServiceCtrlDispatcherW,
-    SERVICE_ACCEPT_STOP, SERVICE_CONTROL_INTERROGATE, SERVICE_CONTROL_STOP, SERVICE_RUNNING,
-    SERVICE_START_PENDING, SERVICE_STATUS, SERVICE_STATUS_CURRENT_STATE, SERVICE_STATUS_HANDLE,
-    SERVICE_STOPPED, SERVICE_STOP_PENDING, SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS,
+    SERVICE_ACCEPT_STOP, SERVICE_CONTROL_INTERROGATE, SERVICE_CONTROL_SHUTDOWN,
+    SERVICE_CONTROL_STOP, SERVICE_RUNNING, SERVICE_START_PENDING, SERVICE_STATUS,
+    SERVICE_STATUS_CURRENT_STATE, SERVICE_STATUS_HANDLE, SERVICE_STOPPED, SERVICE_STOP_PENDING,
+    SERVICE_TABLE_ENTRYW, SERVICE_WIN32_OWN_PROCESS,
 };
 
 use crate::pal::platform::util::ToWin32ErrorCode;
@@ -63,8 +64,8 @@ impl ServiceCtrlContext {
         let accepted_controls = match status {
             SERVICE_START_PENDING => 0,
 
-            // We only ever accept stop requests
-            _ => SERVICE_ACCEPT_STOP,
+            // We accept stop and shutdown requests
+            _ => SERVICE_ACCEPT_STOP | SERVICE_CONTROL_SHUTDOWN,
         };
 
         // Translate the wanted exit code
@@ -245,7 +246,7 @@ impl ServiceDispatcher {
         let ctx = unsafe { &*(context as *mut ServiceCtrlContext) };
 
         let res = match ctrl {
-            SERVICE_CONTROL_STOP => {
+            SERVICE_CONTROL_STOP | SERVICE_CONTROL_SHUTDOWN => {
                 tracing::info!("Received stop request!");
                 let _ = ctx.report_status(SERVICE_STOP_PENDING, ServiceExitCode::Success, 5000);
 

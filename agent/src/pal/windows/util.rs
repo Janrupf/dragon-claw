@@ -15,8 +15,8 @@ impl ToWin32ErrorCode for HRESULT {
     fn to_win32_error_code(&self) -> WIN32_ERROR {
         let h = self.0 as u32;
 
-        if (h & 0xFFFF0000) as u32 == WIN32_HRESULT_MASK {
-            WIN32_ERROR((h & 0xFFFF) as u32)
+        if (h & 0xFFFF0000) == WIN32_HRESULT_MASK {
+            WIN32_ERROR(h & 0xFFFF)
         } else if self.is_ok() {
             ERROR_SUCCESS
         } else {

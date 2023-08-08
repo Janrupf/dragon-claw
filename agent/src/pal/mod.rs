@@ -67,6 +67,13 @@ impl PlatformAbstraction {
         self.platform.advertise_service(socket_addr).await
     }
 
+    /// Stops advertising the service.
+    pub async fn stop_advertising_service(
+        &self
+    ) -> Result<(), PlatformAbstractionError> {
+        self.platform.stop_advertising_service().await
+    }
+    
     /// Shuts down the system.
     pub async fn shutdown_system(&self) -> Result<(), PlatformAbstractionError> {
         self.platform.shutdown_system().await

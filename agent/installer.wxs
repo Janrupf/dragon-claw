@@ -1,8 +1,13 @@
 <?xml version='1.0' encoding='utf-8'?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui" RequiredVersion="4.0">
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:firewall="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     RequiredVersion="4.0">
     <Package Manufacturer="Janrupf" Name="DragonClawAgent" Version="0.1.0"
              UpgradeCode="E90060D9-3880-44B9-8E79-561650A74D1E">
+        <Upgrade Id="E90060D9-3880-44B9-8E79-561650A74D1E">
+            <UpgradeVersion Property="OLDVERSIONFOUND" Minimum="0.1.0" IncludeMinimum="yes"/>
+        </Upgrade>
         <Media Id="1" Cabinet="dragon-claw-agent.cab" CompressionLevel="high" EmbedCab="yes"/>
         <StandardDirectory Id="ProgramFiles64Folder">
             <Directory Id="INSTALLDIR" Name="DragonClawAgent">
@@ -10,10 +15,15 @@
                     <File Id="DragonClawAgentEXE" Name="dragon-claw-agent.exe" DiskId="1"
                           Source="target\release\dragon-claw-agent.exe" KeyPath="yes"/>
                     <ServiceInstall Name="DragonClawAgent" Type="ownProcess" Start="auto" ErrorControl="ignore"
+                                    Account="NT AUTHORITY\NetworkService"
                                     DisplayName="Dragon Claw Agent"
                                     Description="The agent which allows remote control via the Dragon Claw App"/>
                     <ServiceControl Name="DragonClawAgent" Remove="uninstall" Start="install" Stop="uninstall"
                                     Wait="yes"/>
+                    <firewall:FirewallException Name="Dragon Claw Agent" File="DragonClawAgentEXE" Protocol="tcp"
+                                                Scope="any"
+                                                Profile="private"
+                                                Description="Allows incoming connections to the Dragon Claw Agent"/>
                 </Component>
             </Directory>
         </StandardDirectory>

@@ -37,6 +37,7 @@
             <RemoveExistingProducts After="InstallInitialize"/>
         </InstallExecuteSequence>
 
-        <ui:WixUI Id="WixUI_FeatureTree"/>
+        <ui:WixUI Id="WixUI_FeatureTree" InstallDirectory="INSTALLDIR"/>
+        <WixVariable Id="WixUILicenseRtf" Value="target\release\LICENSE.rtf" />
     </Package>
 </Wix>

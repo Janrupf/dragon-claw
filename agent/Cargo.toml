@@ -12,6 +12,7 @@ futures-util = "0.3.28"
 # Logging
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+tracing-appender = "0.2.2"
 
 # Networking/RPC
 tonic = "0.9.2"
@@ -34,7 +35,10 @@ features = [
     "Win32_Foundation",
     "Win32_System_SystemInformation",
     "Win32_System_Shutdown",
+    "Win32_System_SystemServices",
     "Win32_System_Threading",
+    "Win32_System_Services",
+    "Win32_System_Diagnostics_Debug",
     "Win32_Security",
     "Win32_NetworkManagement_Dns"
 ]

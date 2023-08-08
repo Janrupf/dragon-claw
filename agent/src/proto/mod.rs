@@ -2,15 +2,16 @@ tonic::include_proto!("net.janrupf.dc");
 
 use crate::pal::PlatformAbstraction;
 use dragon_claw_agent_server::*;
+use std::sync::Arc;
 use tonic::{Request, Response, Status};
 
 #[derive(Debug)]
 pub struct DragonClawAgentImpl {
-    pal: PlatformAbstraction,
+    pal: Arc<PlatformAbstraction>,
 }
 
 impl DragonClawAgentImpl {
-    pub fn new(pal: PlatformAbstraction) -> Self {
+    pub fn new(pal: Arc<PlatformAbstraction>) -> Self {
         Self { pal }
     }
 }

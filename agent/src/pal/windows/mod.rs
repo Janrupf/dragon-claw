@@ -1,99 +1,92 @@
+mod process;
+mod service;
+mod util;
+
+use crate::pal::platform::process::OwnProcess;
+use crate::pal::platform::service::dispatcher::ServiceDispatcher;
+use crate::pal::platform::service::ServiceEnvironment;
 use std::borrow::Cow;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use thiserror::Error;
 use windows::core::{Error as Win32Error, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{
     DNS_REQUEST_PENDING, ERROR_MORE_DATA, ERROR_SUCCESS, HANDLE, WIN32_ERROR,
 };
 
-use crate::pal::PlatformAbstractionError;
+use crate::pal::{ApplicationStatus, PlatformAbstractionError, ShutdownRequestFut};
 
 #[derive(Debug)]
-pub struct PlatformAbstractionImpl;
+pub struct PlatformInitData {
+    process: OwnProcess,
+    service_environment: ServiceEnvironment,
+    service_dispatcher: Option<Arc<ServiceDispatcher>>,
+}
+
+#[derive(Debug)]
+pub struct PlatformAbstractionImpl {
+    process: OwnProcess,
+    service_environment: ServiceEnvironment,
+    service_dispatcher: Option<Arc<ServiceDispatcher>>,
+}
 
 impl PlatformAbstractionImpl {
-    pub async fn new() -> Result<Self, PlatformAbstractionError> {
-        Self::acquire_privileges();
-        Ok(Self)
+    pub fn dispatch_main<F, R>(main: F) -> Result<R, PlatformAbstractionError>
+    where
+        F: FnOnce(PlatformInitData, ShutdownRequestFut) -> R,
+    {
+        // Initialize process data
+        let mut init_data = Self::perform_pre_init()?;
+
+        if init_data.service_environment != ServiceEnvironment::None {
+            // We need to perform service specific initialization
+            ServiceDispatcher::dispatch_service_main(move |dispatcher, shutdown_fut| {
+                // We are now running as a real windows service
+                let dispatcher = Arc::new(dispatcher);
+                init_data.service_dispatcher = Some(dispatcher);
+
+                main(init_data, shutdown_fut)
+            })
+            .map_err(PlatformError::Win32)
+            .map_err(PlatformAbstractionError::Platform)
+        } else {
+            // Not a service, run the main without a wrapper
+            Ok(main(init_data, crate::pal::ctrl_c_shutdown_fut()))
+        }
     }
 
-    fn acquire_privileges() {
-        use windows::Win32::Security as security;
-        use windows::Win32::System::Threading as threading;
+    fn perform_pre_init() -> Result<PlatformInitData, PlatformError> {
+        let process = OwnProcess::open().map_err(PlatformError::Win32)?;
 
-        unsafe {
-            let current_process = threading::GetCurrentProcess();
-            let mut current_token = HANDLE(0);
-
-            // Get our own process token so we can adjust privileges on it
-            if !threading::OpenProcessToken(
-                current_process,
-                security::TOKEN_ADJUST_PRIVILEGES | security::TOKEN_QUERY,
-                &mut current_token,
-            )
-            .as_bool()
-            {
-                let err = Win32Error::from_win32();
-                tracing::error!("Failed to open own process token: {}", err);
-                return;
-            }
-
-            tracing::trace!("Opened own process token: {:?}", current_token);
-
-            // Technically this loop could adjust multiple privileges with a single call to
-            // AdjustTokenPrivileges - but since the TOKEN_PRIVILEGE structure is defined in a very
-            // idiotic way by MS (array of size 1), we just iterator over the privileges and call
-            // the function foreach privilege separately
-            let privileges_to_acquire = [security::SE_SHUTDOWN_NAME];
-            for to_acquire in privileges_to_acquire {
-                let mut privilege = security::TOKEN_PRIVILEGES {
-                    PrivilegeCount: 1,
-                    Privileges: [security::LUID_AND_ATTRIBUTES {
-                        Luid: Default::default(),
-                        Attributes: security::SE_PRIVILEGE_ENABLED,
-                    }],
-                };
-
-                // Attempt to look up the privilege LUID
-                if !security::LookupPrivilegeValueW(
-                    PCWSTR::null(),
-                    to_acquire,
-                    &mut privilege.Privileges[0].Luid,
-                )
-                .as_bool()
-                {
-                    let err = Win32Error::from_win32();
-                    tracing::warn!(
-                        "Failed to look up privilege {}: {}",
-                        to_acquire.display(),
-                        err
-                    );
-                    continue;
-                }
-                // Now adjust the privilege
-                if !security::AdjustTokenPrivileges(
-                    current_token,
-                    false,
-                    Some(&privilege),
-                    0,
-                    None,
-                    None,
-                )
-                .as_bool()
-                {
-                    let err = Win32Error::from_win32();
-                    tracing::warn!(
-                        "Failed to adjust privilege {}: {}",
-                        to_acquire.display(),
-                        err
-                    );
-                } else {
-                    tracing::trace!("Acquired privilege {}", to_acquire.display());
-                }
-            }
-
-            tracing::debug!("Adjusted privileges!");
+        // Make sure we can shutdown the system
+        if let Err(err) = process.enable_privileges(&[windows::Win32::Security::SE_SHUTDOWN_NAME]) {
+            tracing::warn!("Failed to enable shutdown privilege: {}", err);
         }
+
+        let service_environment = match ServiceEnvironment::detect(&process) {
+            Ok(v) => v,
+            Err(err) => {
+                tracing::warn!("Failed to detect service environment: {}", err);
+                tracing::warn!("Assuming to be running as a normal application");
+                ServiceEnvironment::None
+            }
+        };
+
+        tracing::trace!("Service environment: {:?}", service_environment);
+
+        Ok(PlatformInitData {
+            process,
+            service_environment,
+            service_dispatcher: None,
+        })
+    }
+
+    pub async fn new(data: PlatformInitData) -> Result<Self, PlatformAbstractionError> {
+        Ok(Self {
+            process: data.process,
+            service_environment: data.service_environment,
+            service_dispatcher: data.service_dispatcher,
+        })
     }
 
     pub async fn advertise_service(
@@ -291,6 +284,33 @@ impl PlatformAbstractionImpl {
         }
 
         Ok(())
+    }
+
+    pub async fn set_status(&self, status: ApplicationStatus) {
+        let Some(service_dispatcher) = self.service_dispatcher.as_ref() else {
+            // If we don't have a service dispatcher we don't need to report the status
+            return;
+        };
+
+        let res = match status {
+            ApplicationStatus::Starting => service_dispatcher.report_start_pending(),
+            ApplicationStatus::Running => service_dispatcher.report_running(),
+            ApplicationStatus::Stopping => service_dispatcher.report_stopping(),
+            ApplicationStatus::Stopped => service_dispatcher.report_stopped_ok(),
+            ApplicationStatus::PlatformError(PlatformAbstractionError::Platform(
+                PlatformError::Win32(err),
+            )) => service_dispatcher.report_stopped_win32(err),
+            ApplicationStatus::PlatformError(_) => {
+                service_dispatcher.report_stopped_application_err(1)
+            }
+            ApplicationStatus::ApplicationError(_) => {
+                service_dispatcher.report_stopped_application_err(2)
+            }
+        };
+
+        if let Err(err) = res {
+            tracing::warn!("Failed to report service status: {}", err);
+        }
     }
 }
 

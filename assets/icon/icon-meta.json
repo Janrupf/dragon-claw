@@ -1,0 +1,36 @@
+{
+  "file": "icon-complete.svg",
+  "targets": [
+    {
+      "type": "png",
+      "name": "generic-icon",
+      "options": {
+        "width": 512,
+        "height": 512
+      }
+    },
+    {
+      "type": "ico",
+      "name": "windows-icon",
+      "options": {
+        "sizes": [
+          16,
+          32,
+          48,
+          64,
+          128,
+          256,
+          512
+        ]
+      }
+    },
+    {
+      "type": "android-adaptive",
+      "name": "android-adaptive-icons",
+      "options": {
+        "backgroundColorFrom": "backgroundCircle",
+        "maskElement": "dragon"
+      }
+    }
+  ]
+}

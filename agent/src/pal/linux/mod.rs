@@ -1,15 +1,19 @@
 mod avahi;
 mod login1;
 
-use crate::pal::platform::avahi::AvahiServer2Proxy;
+use crate::pal::platform::avahi::{AvahiEntryGroupProxy, AvahiServer2Proxy};
 use crate::pal::platform::login1::Login1ManagerProxy;
-use crate::pal::PlatformAbstractionError;
+use crate::pal::{ApplicationStatus, PlatformAbstractionError, ShutdownRequestFut};
 use futures_util::FutureExt;
 use std::borrow::Cow;
 use std::net::SocketAddr;
 use thiserror::Error;
+use tokio::sync::Mutex;
 
 const DBUS_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+// No init data required on Linux, PAL is initialized in the `new` function
+pub type PlatformInitData = ();
 
 macro_rules! dbus_call {
     ($e:expr) => {{
@@ -26,10 +30,19 @@ pub struct PlatformAbstractionImpl {
     dbus_system_connection: zbus::Connection,
     avahi: Option<AvahiServer2Proxy<'static>>,
     login1manager: Option<Login1ManagerProxy<'static>>,
+    registered_dns_service: Mutex<Option<AvahiEntryGroupProxy<'static>>>,
 }
 
 impl PlatformAbstractionImpl {
-    pub async fn new() -> Result<Self, PlatformAbstractionError> {
+    pub fn dispatch_main<F, R>(main: F) -> Result<R, PlatformAbstractionError>
+    where
+        F: FnOnce(PlatformInitData, ShutdownRequestFut) -> R,
+    {
+        // Simply run the main function, we don't need to perform any platform initialization
+        Ok(main((), crate::pal::ctrl_c_shutdown_fut()))
+    }
+
+    pub async fn new(_: PlatformInitData) -> Result<Self, PlatformAbstractionError> {
         // Connect to system D-Bus
         let dbus_system_connection = zbus::Connection::system()
             .await
@@ -72,6 +85,7 @@ impl PlatformAbstractionImpl {
             dbus_system_connection,
             avahi,
             login1manager,
+            registered_dns_service: Mutex::new(None),
         })
     }
 
@@ -116,6 +130,23 @@ impl PlatformAbstractionImpl {
 
         dbus_call!(group.commit()).await?;
 
+        // Store the group in the registered service mutex
+        let mut registered_dns_service = self.registered_dns_service.lock().await;
+        registered_dns_service.replace(group);
+
+        Ok(())
+    }
+
+    pub async fn stop_advertising_service(&self) -> Result<(), PlatformAbstractionError> {
+        // Take the group out of the mutex
+        let mut registered_dns_service = self.registered_dns_service.lock().await;
+        let group = match registered_dns_service.take() {
+            Some(v) => v,
+            None => return Ok(()),
+        };
+
+        // Release the group
+        dbus_call!(group.free()).await?;
         Ok(())
     }
 
@@ -145,6 +176,10 @@ impl PlatformAbstractionImpl {
         });
 
         Ok(())
+    }
+
+    pub async fn set_status(&self, _: ApplicationStatus) {
+        // Nothing to do on Linux
     }
 }
 

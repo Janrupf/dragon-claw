@@ -36,4 +36,6 @@ trait AvahiEntryGroup {
     ) -> zbus::Result<()>;
 
     async fn commit(&self) -> zbus::Result<()>;
+
+    async fn free(self) -> zbus::Result<()>;
 }

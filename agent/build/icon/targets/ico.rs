@@ -1,13 +1,12 @@
 use crate::icon::gen::OutputGenerator;
-use crate::icon::meta::{IcoTarget, IconTarget};
+use crate::icon::meta::IcoTarget;
 use crate::icon::IconProcessorError;
 use resvg::usvg;
 
 pub fn process_ico_target(
     icon: &usvg::Tree,
-    target: &IconTarget,
     data: &IcoTarget,
-    outputs: &OutputGenerator,
+    outputs: &mut OutputGenerator,
 ) -> Result<(), IconProcessorError> {
     // Generate a new ICO directory
     let mut icon_dir = ico::IconDir::new(ico::ResourceType::Icon);
@@ -24,7 +23,7 @@ pub fn process_ico_target(
     }
 
     // Write the ICO directory to the output
-    let mut writer = outputs.create_target_output(target, "icon.ico")?;
+    let mut writer = outputs.create_target_output("icon", "icon.ico")?;
     icon_dir.write(&mut writer)?;
 
     Ok(())

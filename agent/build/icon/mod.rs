@@ -3,16 +3,17 @@ mod meta;
 pub(crate) mod render;
 mod targets;
 
-use crate::icon::gen::OutputGenerator;
+use crate::icon::gen::{BuildOutputs, OutputGenerator};
 use crate::icon::meta::{IconMetadata, IconTargetType};
 use resvg::usvg;
 use resvg::usvg::TreeParsing;
+use std::path::PathBuf;
 use thiserror::Error;
 
 pub struct IconProcessor {
     icon: usvg::Tree,
     metadata: IconMetadata,
-    output_generator: OutputGenerator,
+    build_dir: PathBuf,
 }
 
 impl IconProcessor {
@@ -42,20 +43,16 @@ impl IconProcessor {
             .map_err(IconProcessorError::SvgParse)?;
 
         // Create the output generator
-        let output_generator = OutputGenerator::new(resource_dir.join("build"));
+        let build_dir = resource_dir.join("build");
 
         Ok(Self {
             metadata,
             icon,
-            output_generator,
+            build_dir,
         })
     }
 
-    pub fn metadata(&self) -> &IconMetadata {
-        &self.metadata
-    }
-
-    pub fn process(&self, target: &str) -> Result<(), IconProcessorError> {
+    pub fn process(&self, target: &str) -> Result<BuildOutputs, IconProcessorError> {
         let target = self
             .metadata
             .targets
@@ -63,18 +60,22 @@ impl IconProcessor {
             .find(|t| t.name == target)
             .ok_or_else(|| IconProcessorError::TargetNotFound(target.to_string()))?;
 
+        let mut output_generator = OutputGenerator::new(&self.build_dir, target);
+
         // Check the processor to use
         match &target.target_type {
             IconTargetType::Png(png) => {
-                targets::process_png_target(&self.icon, target, png, &self.output_generator)
+                targets::process_png_target(&self.icon, png, &mut output_generator)
             }
             IconTargetType::Ico(ico) => {
-                targets::process_ico_target(&self.icon, target, ico, &self.output_generator)
+                targets::process_ico_target(&self.icon, ico, &mut output_generator)
             }
             IconTargetType::Other => {
                 Err(IconProcessorError::UnsupportedTarget(target.name.clone()))
             }
-        }
+        }?;
+
+        Ok(output_generator.finalize())
     }
 }
 
@@ -103,4 +104,10 @@ pub enum IconProcessorError {
 
     #[error("an error occurred while encoding the PNG: {0}")]
     PngEncoding(#[from] png::EncodingError),
+
+    #[error("the output {name} has already been generated at {}", path.display())]
+    DuplicatedOutput { name: String, path: PathBuf },
+
+    #[error("the output {0} was not found in the generated outputs")]
+    OutputNotFound(String),
 }

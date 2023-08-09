@@ -23,5 +23,17 @@ fn main() {
     let icon_processor =
         icon::IconProcessor::from_file(icon_meta).expect("Failed to construct icon processor");
     icon_processor.process("generic-icon").unwrap();
-    icon_processor.process("windows-icon").unwrap();
+
+    // We always generate the icons to ensure the build works, but only consume them
+    // when targeting windows.
+    let windows_icons = icon_processor.process("windows-icon").unwrap();
+
+    if std::env::var_os("CARGO_CFG_WINDOWS").is_some() {
+        // Targeting windows, generate windows specific resources
+        let icon_resource = windows_icons.get_output("icon").unwrap();
+        winres::WindowsResource::new()
+            .set_icon(&icon_resource.display().to_string())
+            .compile()
+            .expect("Failed to compile windows resources");
+    }
 }

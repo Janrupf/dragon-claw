@@ -1,9 +1,12 @@
 mod gen;
+mod inputs;
 mod meta;
 pub(crate) mod render;
 mod targets;
 
 use crate::icon::gen::{BuildOutputs, OutputGenerator};
+use crate::icon::inputs::variables::VariableError;
+use crate::icon::inputs::BuildInputs;
 use crate::icon::meta::{IconMetadata, IconTargetType};
 use resvg::usvg;
 use resvg::usvg::TreeParsing;
@@ -11,9 +14,9 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 pub struct IconProcessor {
-    icon: usvg::Tree,
     metadata: IconMetadata,
     build_dir: PathBuf,
+    inputs: BuildInputs,
 }
 
 impl IconProcessor {
@@ -42,13 +45,14 @@ impl IconProcessor {
         let icon = usvg::Tree::from_str(&icon_data, &parse_options)
             .map_err(IconProcessorError::SvgParse)?;
 
-        // Create the output generator
+        // Compute inputs and outputs
         let build_dir = resource_dir.join("build");
+        let inputs = BuildInputs::instantiate(icon, &metadata)?;
 
         Ok(Self {
             metadata,
-            icon,
             build_dir,
+            inputs,
         })
     }
 
@@ -65,10 +69,10 @@ impl IconProcessor {
         // Check the processor to use
         match &target.target_type {
             IconTargetType::Png(png) => {
-                targets::process_png_target(&self.icon, png, &mut output_generator)
+                targets::process_png_target(&self.inputs, png, &mut output_generator)
             }
             IconTargetType::Ico(ico) => {
-                targets::process_ico_target(&self.icon, ico, &mut output_generator)
+                targets::process_ico_target(&self.inputs, ico, &mut output_generator)
             }
             IconTargetType::Other => {
                 Err(IconProcessorError::UnsupportedTarget(target.name.clone()))
@@ -110,4 +114,7 @@ pub enum IconProcessorError {
 
     #[error("the output {0} was not found in the generated outputs")]
     OutputNotFound(String),
+
+    #[error(transparent)]
+    Variable(#[from] VariableError),
 }

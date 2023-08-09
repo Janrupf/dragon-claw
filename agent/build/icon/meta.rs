@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use serde::{Deserialize, Deserializer};
 use std::path::PathBuf;
 
@@ -9,6 +10,23 @@ pub struct IconMetadata {
 
     /// The available targets for this icon
     pub targets: Vec<IconTarget>,
+    
+    /// Variables to extract
+    pub variables: HashMap<String, IconVariable>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum IconVariable {
+    /// A variable to be extract from a fill paint
+    FillPaint(FillPaintVariable),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FillPaintVariable {
+    /// Id of the element to extract the fill paint from
+    pub from: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -51,6 +69,26 @@ pub struct PngTarget {
 
     /// The height of the png
     pub height: u32,
+
+    /// The placement of the png
+    #[serde(default)]
+    pub placement: PngTargetPlacement,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PngTargetPlacement {
+    /// The x coordinate of the png
+    pub x: i32,
+
+    /// The y coordinate of the png
+    pub y: i32,
+
+    /// The width of the png
+    pub width: Option<u32>,
+
+    /// The height of the png
+    pub height: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

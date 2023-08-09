@@ -1,12 +1,32 @@
 {
   "file": "icon-complete.svg",
+  "variables": {
+    "backgroundColor": {
+      "type": "fillPaint",
+      "from": "backgroundCircle"
+    }
+  },
   "targets": [
     {
       "type": "png",
-      "name": "generic-icon",
+      "name": "wix-installer-banner",
       "options": {
-        "width": 512,
-        "height": 512
+        "width": 493,
+        "height": 58
+      }
+    },
+    {
+      "type": "png",
+      "name": "wix-installer-dialog",
+      "options": {
+        "width": 493,
+        "height": 312,
+        "placement": {
+          "x": 18,
+          "y": 18,
+          "width": 128,
+          "height": 128
+        }
       }
     },
     {

@@ -22,7 +22,10 @@ fn main() {
 
     let icon_processor =
         icon::IconProcessor::from_file(icon_meta).expect("Failed to construct icon processor");
-    icon_processor.process("generic-icon").unwrap();
+
+    // Generate installer icons
+    icon_processor.process("wix-installer-banner").unwrap();
+    icon_processor.process("wix-installer-dialog").unwrap();
 
     // We always generate the icons to ensure the build works, but only consume them
     // when targeting windows.

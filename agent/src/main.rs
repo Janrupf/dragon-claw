@@ -15,16 +15,9 @@ mod pal;
 mod proto;
 
 fn main() {
-    let file_appender = tracing_appender::rolling::daily("C:/Temp", "dragon-claw-agent.log");
-
     // Set up logging using tracing
     tracing_subscriber::registry()
         .with(tracing_subscriber::fmt::layer())
-        .with(
-            tracing_subscriber::fmt::layer()
-                .with_ansi(false)
-                .with_writer(file_appender),
-        )
         .with(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
@@ -125,7 +118,7 @@ async fn runner(
     }
 
     pal.set_status(ApplicationStatus::Stopping).await;
-    
+
     if let Err(err) = pal.stop_advertising_service().await {
         tracing::warn!("Failed to stop advertising service: {}", err);
     }

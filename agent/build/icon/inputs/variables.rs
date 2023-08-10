@@ -2,6 +2,7 @@ use crate::icon::meta::IconVariable;
 use resvg::usvg;
 use std::collections::HashMap;
 use thiserror::Error;
+use crate::icon::render::PaintData;
 
 #[derive(Debug)]
 pub struct ExtractedVariables {
@@ -46,7 +47,7 @@ impl ExtractedVariables {
                     // Save the variable
                     extracted_variables.insert(
                         name.clone(),
-                        ExtractedVariable::Paint(PaintVariable {
+                        ExtractedVariable::Paint(PaintData {
                             paint: fill.paint,
                             opacity: fill.opacity,
                         }),
@@ -61,7 +62,7 @@ impl ExtractedVariables {
     }
 
     /// Retrieves a paint variable by name
-    pub fn paint(&self, name: &str) -> Result<&PaintVariable, VariableError> {
+    pub fn paint(&self, name: &str) -> Result<&PaintData, VariableError> {
         #[allow(unreachable_patterns)] // Currently we only have one variable type
         match self.variables.get(name) {
             Some(ExtractedVariable::Paint(v)) => Ok(v),
@@ -77,13 +78,7 @@ impl ExtractedVariables {
 /// A variable extracted from the build inputs
 #[derive(Debug)]
 pub enum ExtractedVariable {
-    Paint(PaintVariable),
-}
-
-#[derive(Debug, Clone)]
-pub struct PaintVariable {
-    paint: usvg::Paint,
-    opacity: usvg::Opacity,
+    Paint(PaintData),
 }
 
 impl ExtractedVariable {

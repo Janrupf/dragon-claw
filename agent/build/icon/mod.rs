@@ -106,6 +106,14 @@ pub enum IconProcessorError {
     #[error("the pixmap dimensions are invalid: {width}x{height}")]
     InvalidPixmapDimensions { width: u32, height: u32 },
 
+    #[error("the rectangle extents are invalid: {x},{y} {width}x{height}")]
+    InvalidRectangleExtents {
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    },
+
     #[error("an error occurred while encoding the PNG: {0}")]
     PngEncoding(#[from] png::EncodingError),
 
@@ -117,4 +125,7 @@ pub enum IconProcessorError {
 
     #[error(transparent)]
     Variable(#[from] VariableError),
+
+    #[error("could not convert paint")]
+    PaintConversionFailed,
 }

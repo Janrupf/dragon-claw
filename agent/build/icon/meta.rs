@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use serde::{Deserialize, Deserializer};
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -10,7 +10,7 @@ pub struct IconMetadata {
 
     /// The available targets for this icon
     pub targets: Vec<IconTarget>,
-    
+
     /// Variables to extract
     pub variables: HashMap<String, IconVariable>,
 }
@@ -73,6 +73,10 @@ pub struct PngTarget {
     /// The placement of the png
     #[serde(default)]
     pub placement: PngTargetPlacement,
+
+    /// Additional draw steps to perform
+    #[serde(default)]
+    pub draw_steps: DrawSteps,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -96,4 +100,48 @@ pub struct PngTargetPlacement {
 pub struct IcoTarget {
     /// The sizes to include in the ico file
     pub sizes: Vec<u32>,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DrawSteps {
+    /// Steps to draw before drawing the icon
+    #[serde(default)]
+    pub before: Vec<DrawStep>,
+
+    /// Steps to draw after drawing the icon
+    #[serde(default)]
+    pub after: Vec<DrawStep>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum DrawStep {
+    /// Draw a rectangle
+    Rect(DrawRectStep),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct DrawRectStep {
+    /// The x coordinate of the rectangle
+    pub x: u32,
+
+    /// The y coordinate of the rectangle
+    pub y: u32,
+
+    /// The width of the rectangle
+    pub width: u32,
+
+    /// The height of the rectangle
+    pub height: u32,
+
+    /// The fill of the rectangle
+    pub fill: InputUsage,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum InputUsage {
+    /// Use a variable as input
+    Variable { from: String },
 }

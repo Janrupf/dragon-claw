@@ -40,6 +40,6 @@
         <ui:WixUI Id="WixUI_FeatureTree" InstallDirectory="INSTALLDIR"/>
         <WixVariable Id="WixUILicenseRtf" Value="target\release\LICENSE.rtf" />
         <WixVariable Id="WixUIDialogBmp" Value="assets\icon\build\wix-installer-dialog\icon.png" />
-        <WixVariable Id="WIxUIBannerBmp" Value="assets\icon\build\wix-installer-banner\icon.png" />
+        <WixVariable Id="WixUIBannerBmp" Value="assets\icon\build\wix-installer-banner\icon.png" />
     </Package>
 </Wix>

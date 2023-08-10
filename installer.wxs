@@ -3,7 +3,7 @@
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
      xmlns:firewall="http://wixtoolset.org/schemas/v4/wxs/firewall"
      RequiredVersion="4.0">
-    <Package Manufacturer="Janrupf" Name="DragonClawAgent" Version="0.1.0"
+    <Package Manufacturer="Janrupf" Name="Dragon Claw Agent" Version="0.1.0"
              UpgradeCode="E90060D9-3880-44B9-8E79-561650A74D1E">
         <Upgrade Id="E90060D9-3880-44B9-8E79-561650A74D1E">
             <UpgradeVersion Property="OLDVERSIONFOUND" Minimum="0.1.0" IncludeMinimum="yes"/>
@@ -28,7 +28,7 @@
             </Directory>
         </StandardDirectory>
 
-        <Feature Id="Complete" Title="DragonClawAgent" Description="The main agent executable" AllowAdvertise="no"
+        <Feature Id="Complete" Title="Dragon Claw Agent" Description="The main agent executable" AllowAdvertise="no"
                  AllowAbsent="no" Level="1" ConfigurableDirectory="INSTALLDIR">
             <ComponentRef Id="DragonClawAgent"/>
         </Feature>

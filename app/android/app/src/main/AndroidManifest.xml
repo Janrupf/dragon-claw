@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
 
     <application
-        android:label="dragon_claw"
+        android:label="Dragon Claw"
         android:name="${applicationName}"
         android:icon="@drawable/ic_launcher"
         android:enableOnBackInvokedCallback="true">

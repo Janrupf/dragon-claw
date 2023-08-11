@@ -69,7 +69,9 @@
       "type": "android",
       "name": "android-icons",
       "options": {
-        "resourceName": "ic_launcher"
+        "resourceName": "ic_launcher",
+        "background": "backgroundCircle",
+        "foreground": "dragon"
       }
     }
   ]

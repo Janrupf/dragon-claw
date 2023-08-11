@@ -53,11 +53,21 @@ class _DiscoveryListState extends State<DiscoveryList> {
   }
 
   Widget _buildEntry(BuildContext context, int index) {
+    final theme = Theme.of(context).textTheme;
     final agent = _discovery.discoveredAgents[index];
 
-    return ListTile(
-      title: Text(agent.name),
-      subtitle: Text(agent.address.address),
+    return InkWell(
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: ListTile(
+          leading: const Icon(Icons.computer),
+          title: Text(
+            agent.name,
+            style: theme.headlineSmall,
+          ),
+          subtitle: Text(agent.address.address),
+        ),
+      ),
       onTap: () {
         context.push("/control", extra: agent);
       },

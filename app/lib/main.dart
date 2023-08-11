@@ -1,4 +1,5 @@
 import 'package:dragon_claw/routing.dart';
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 
@@ -27,14 +28,26 @@ class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Dragon Claw',
-      theme: ThemeData(
-        colorScheme: const ColorScheme.dark(),
-        useMaterial3: true,
-      ),
-      routerConfig: DragonClawRouter.instance,
-    );
-  }
+  Widget build(BuildContext context) => DynamicColorBuilder(
+        builder: (lightScheme, darkScheme) {
+          ColorScheme scheme;
+          if (MediaQuery.of(context).platformBrightness == Brightness.light) {
+            scheme = lightScheme ?? const ColorScheme.light();
+          } else {
+            scheme = darkScheme ?? const ColorScheme.dark();
+          }
+
+          return MaterialApp.router(
+            title: 'Dragon Claw',
+            theme: ThemeData(
+                colorScheme: scheme,
+                useMaterial3: true,
+                snackBarTheme: const SnackBarThemeData(
+                  // Material 3, no idea why flutter doesn't already sets this
+                  behavior: SnackBarBehavior.floating,
+                )),
+            routerConfig: DragonClawRouter.instance,
+          );
+        },
+      );
 }

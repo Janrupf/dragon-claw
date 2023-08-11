@@ -7,7 +7,10 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
-          title: const Text("Dragon Claw"),
+          title: Text(
+            "Dragon Claw",
+            style: Theme.of(context).textTheme.headlineLarge,
+          ),
         ),
         body: const DiscoveryList(),
       );

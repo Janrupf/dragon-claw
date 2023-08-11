@@ -32,8 +32,15 @@ class ControlScreen extends StatelessWidget {
   void _shutdownPressed(BuildContext context) {
     _client
         .shutdownSystem()
-        .then((value) => _log.info("Shutdown request sent"))
+        .then((value) => _notifySuccess(context, "Request sent!"))
         .catchError((error, trace) => _onRpcError(context, error, trace));
+  }
+
+  void _notifySuccess(BuildContext context, String message) {
+    // Show an error snackbar based on the color scheme
+    final snackBar = SnackBar(content: Text(message));
+
+    ScaffoldMessenger.of(context).showSnackBar(snackBar);
   }
 
   void _onRpcError(BuildContext context, Object error, StackTrace trace) {

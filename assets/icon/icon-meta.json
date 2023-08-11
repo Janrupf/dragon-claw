@@ -66,11 +66,10 @@
       }
     },
     {
-      "type": "android-adaptive",
-      "name": "android-adaptive-icons",
+      "type": "android",
+      "name": "android-icons",
       "options": {
-        "backgroundColorFrom": "backgroundCircle",
-        "maskElement": "dragon"
+        "resourceName": "ic_launcher"
       }
     }
   ]

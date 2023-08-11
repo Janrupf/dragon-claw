@@ -1,0 +1,39 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
+plugins {
+    id("java-gradle-plugin")
+    id("com.github.johnrengelman.shadow") version "8.1.1"
+}
+
+repositories {
+    google()
+    mavenCentral()
+}
+
+dependencies {
+    // Android gradle plugin
+    implementation("com.android.tools.build:gradle:8.0.2")
+
+    // Android sdk tools
+    implementation("com.android.tools:sdk-common:31.0.2")
+
+    // Jackson
+    implementation("com.fasterxml.jackson.core:jackson-core:2.15.2")
+    implementation("com.fasterxml.jackson.core:jackson-annotations:2.15.2")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
+}
+
+gradlePlugin {
+    plugins {
+        create("DragonClawGradle") {
+            id = "net.janrupf.dragon-claw-gradle"
+            implementationClass = "net.janrupf.dragonclaw.gradle.DragonClawGradlePlugin"
+        }
+    }
+}
+
+tasks.named("shadowJar", ShadowJar) {
+    enableRelocation(true)
+}
+
+rootProject.buildDir = "../../build"

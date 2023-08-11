@@ -2,6 +2,7 @@ plugins {
     id "com.android.application"
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
+    id "net.janrupf.dragon-claw-gradle"
 }
 
 def localProperties = new Properties()
@@ -61,6 +62,13 @@ android {
 
 flutter {
     source '../..'
+}
+
+dragonClawIcons {
+    icon(file("../../../assets/icon/icon-meta.json")) {
+        sourceSet(android.sourceSets.main)
+        target("android-icons")
+    }
 }
 
 dependencies {}

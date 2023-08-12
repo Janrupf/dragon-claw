@@ -8,7 +8,19 @@ import 'package:logging/logging.dart';
 
 final _log = Logger("screen.control");
 
-class ControlScreen extends StatelessWidget {
+class _AvailableOptions {
+  final Set<PowerAction> powerActions;
+
+  _AvailableOptions({required this.powerActions});
+
+  /// Loads the available options from the agent.
+  static Future<_AvailableOptions> load(DragonClawAgentClient client) async {
+    final powerActions = await client.getSupportedPowerActions();
+    return _AvailableOptions(powerActions: powerActions);
+  }
+}
+
+class ControlScreen extends StatefulWidget {
   final DiscoveredAgent agent;
 
   /// The client constructed from the agent
@@ -18,42 +30,124 @@ class ControlScreen extends StatelessWidget {
       : _client = DragonClawAgentClient(agent.address, agent.port);
 
   @override
+  State<ControlScreen> createState() => _ControlScreenState();
+}
+
+class _ControlScreenState extends State<ControlScreen> {
+  _AvailableOptions? _availableOptions;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _AvailableOptions.load(widget._client).then((value) {
+      if (mounted) {
+        setState(() {
+          _availableOptions = value;
+        });
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
-          title: Text("Control ${agent.name}"),
+          title: Text("Control ${widget.agent.name}"),
         ),
-        body: Builder(builder: _buildBody),
+        body: _availableOptions == null
+            ? _buildLoading(context)
+            : _buildBody(context, _availableOptions!),
       );
 
-  Widget _buildBody(BuildContext context) => ListView(
+  /// Build the widget content while still loading the available options.
+  Widget _buildLoading(BuildContext context) => const Center(
+        child: CircularProgressIndicator(),
+      );
+
+  /// Build the body of the widget with the available options.
+  Widget _buildBody(BuildContext context, _AvailableOptions options) =>
+      _ControlScreenContent(
+        client: widget._client,
+        options: options,
+      );
+}
+
+class _ControlScreenContent extends StatelessWidget {
+  final DragonClawAgentClient client;
+  final _AvailableOptions options;
+
+  const _ControlScreenContent({
+    required this.client,
+    required this.options,
+  });
+
+  @override
+  Widget build(BuildContext context) => ListView(
         children: [
-          IntrinsicHeight(
-            child: ActionWithOptions(
-              child: const ListTile(
-                leading: Icon(Icons.power_settings_new),
-                title: Text("Power off"),
-                subtitle: Text("Shut down the system"),
-              ),
-              onPressed: () => _shutdownPressed(context),
-              onOptionsPressed: () {
-                showModalBottomSheet(
-                  showDragHandle: true,
-                  useRootNavigator: true,
-                  isDismissible: true,
-                  context: context,
-                  builder: (context) => const PowerActionSheet(),
-                );
-              },
-            ),
-          )
+          if (options.powerActions.isNotEmpty) _buildPowerAction(context),
         ],
       );
 
-  void _shutdownPressed(BuildContext context) {
-    _client
-        .shutdownSystem()
-        .then((value) => _notifySuccess(context, "Request sent!"))
-        .catchError((error, trace) => _onRpcError(context, error, trace));
+  Widget _buildPowerAction(BuildContext context) {
+    final defaultAction = options.powerActions.reduce((value, element) {
+      // Prefer the action with the lowest index
+      if (value.index < element.index) {
+        return value;
+      } else {
+        return element;
+      }
+    });
+
+    // Extract and sort the other actions
+    final otherActions = options.powerActions
+        .where((element) => element != defaultAction)
+        .toList(growable: false);
+
+    otherActions.sort((a, b) => a.index.compareTo(b.index));
+
+    return IntrinsicHeight(
+      child: ActionWithOptions(
+        child: ListTile(
+          leading: Icon(defaultAction.icon),
+          title: Text(defaultAction.name),
+          subtitle: Text(defaultAction.description),
+        ),
+        onPressed: () => _performPowerAction(defaultAction, context),
+        onOptionsPressed: () {
+          showModalBottomSheet<PowerAction>(
+            showDragHandle: true,
+            useRootNavigator: true,
+            isDismissible: true,
+            context: context,
+            builder: (context) => PowerActionSheet(actions: otherActions),
+          ).then((action) {
+            if (action != null) {
+              _performPowerAction(action, context);
+            }
+          });
+        },
+      ),
+    );
+  }
+
+  void _performPowerAction(PowerAction action, BuildContext context) {
+    _log.info("Performing power action $action");
+    _handleRpcFut(client.performPowerAction(action), context);
+  }
+
+  Future<T> _handleRpcFut<T>(Future<T> rpcFut, BuildContext context) {
+    return rpcFut.then((value) {
+      if (context.mounted) {
+        _notifySuccess(context, "Power action performed");
+      }
+      return value;
+    }).catchError((error, trace) {
+      if (context.mounted) {
+        _onRpcError(context, error, trace);
+      }
+
+      return Future<T>.error(error, trace);
+    });
   }
 
   void _notifySuccess(BuildContext context, String message) {

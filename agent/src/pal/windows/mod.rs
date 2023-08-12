@@ -3,9 +3,9 @@ mod process;
 mod service;
 mod util;
 
+use crate::pal::platform::discovery::dispatcher::ServiceDispatcher;
+use crate::pal::platform::discovery::ServiceEnvironment;
 use crate::pal::platform::process::OwnProcess;
-use crate::pal::platform::service::dispatcher::ServiceDispatcher;
-use crate::pal::platform::service::ServiceEnvironment;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use thiserror::Error;

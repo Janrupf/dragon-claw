@@ -3,6 +3,79 @@ package net.janrupf.dc;
 
 import "google/protobuf/empty.proto";
 
+/**
+ * System power actions.
+ */
+enum PowerAction {
+  /**
+   * Power-off the system.
+   */
+  POWER_OFF = 0;
+
+  /**
+   * Reboot the system.
+   */
+  REBOOT = 1;
+
+  /**
+   * Reboot the system into the firmware.
+   */
+  REBOOT_TO_FIRMWARE = 2;
+
+  /**
+   * Lock the screen.
+   */
+  LOCK = 4;
+
+  /**
+   * Log out the current user.
+   */
+  LOG_OUT = 5;
+
+  /**
+   * Suspend the system.
+   */
+  SUSPEND = 6;
+
+  /**
+   * Hibernate the system.
+   */
+  HIBERNATE = 7;
+
+  /**
+   * Hybrid-suspend the system.
+   */
+  HYBRID_SUSPEND = 8;
+}
+
+/**
+ * Response to a query which power actions are supported.
+ */
+message SupportedPowerActions {
+  /**
+   * The supported power actions.
+   */
+  repeated PowerAction actions = 1;
+}
+
+/**
+ * Request to perform a power action.
+ */
+message PowerActionRequest {
+  /**
+   * The power action to perform.
+   */
+  PowerAction action = 1;
+}
+
 service DragonClawAgent {
-  rpc ShutdownSystem(google.protobuf.Empty) returns (google.protobuf.Empty);
+  /**
+   * Query which power actions are supported.
+   */
+  rpc GetSupportedPowerActions(google.protobuf.Empty) returns (SupportedPowerActions);
+
+  /**
+   * Perform a power action.
+   */
+  rpc PerformPowerAction(PowerActionRequest) returns (google.protobuf.Empty);
 }

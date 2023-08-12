@@ -1,5 +1,7 @@
 use crate::error::DragonClawAgentError;
-use crate::pal::{ApplicationStatus, PlatformInitData, ShutdownRequestFut};
+use crate::pal::discovery::DiscoveryManager;
+use crate::pal::status::{ApplicationStatus, StatusManager};
+use crate::pal::{PlatformInitData, ShutdownRequestFut};
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -60,17 +62,22 @@ async fn service_main(data: PlatformInitData, shutdown_fut: ShutdownRequestFut) 
 
     let pal = Arc::new(pal);
 
-    pal.set_status(ApplicationStatus::Starting).await;
+    pal.status_manager()
+        .set_status(ApplicationStatus::Starting)
+        .await;
     match runner(pal.clone(), shutdown_fut).await {
         Ok(()) => {
             tracing::info!("Service finished successfully!");
-            pal.set_status(ApplicationStatus::Stopped).await;
+            pal.status_manager()
+                .set_status(ApplicationStatus::Stopped)
+                .await;
 
             Ok(())
         }
         Err(err) => {
             tracing::error!("Service failed: {}", err);
-            pal.set_status(ApplicationStatus::ApplicationError(err.into()))
+            pal.status_manager()
+                .set_status(ApplicationStatus::ApplicationError(err.into()))
                 .await;
 
             Err(())
@@ -90,13 +97,25 @@ async fn runner(
     let local_addr = listener.local_addr()?;
 
     tracing::debug!("Listening on {}", local_addr);
-
-    if let Err(err) = pal.advertise_service(local_addr).await {
-        tracing::warn!(
-            "Failed to advertise service, discovery not available: {}",
-            err
-        );
+    let discovery_manager = pal.discovery_manager();
+    if discovery_manager.is_none() {
+        tracing::warn!("Discovery not available, not advertising service");
     }
+
+    let service_advertised = if let Some(discovery_manager) = discovery_manager {
+        if let Err(err) = discovery_manager.advertise_service(local_addr).await {
+            tracing::warn!(
+                "Failed to advertise service, discovery not available: {}",
+                err
+            );
+
+            false
+        } else {
+            true
+        }
+    } else {
+        false
+    };
 
     let incoming =
         TcpIncoming::from_listener(listener, true, None).map_err(DragonClawAgentError::Tonic)?;
@@ -108,7 +127,9 @@ async fn runner(
         )))
         .serve_with_incoming(incoming);
 
-    pal.set_status(ApplicationStatus::Running).await;
+    pal.status_manager()
+        .set_status(ApplicationStatus::Running)
+        .await;
 
     tokio::select! {
         res = server_future => res?,
@@ -117,10 +138,16 @@ async fn runner(
         }
     }
 
-    pal.set_status(ApplicationStatus::Stopping).await;
+    pal.status_manager()
+        .set_status(ApplicationStatus::Stopping)
+        .await;
 
-    if let Err(err) = pal.stop_advertising_service().await {
-        tracing::warn!("Failed to stop advertising service: {}", err);
+    if service_advertised {
+        if let Some(discovery_manager) = discovery_manager {
+            if let Err(err) = discovery_manager.stop_advertising_service().await {
+                tracing::warn!("Failed to stop advertising service: {}", err);
+            }
+        }
     }
 
     Ok(())

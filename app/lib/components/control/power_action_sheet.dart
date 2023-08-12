@@ -1,36 +1,25 @@
+import 'package:dragon_claw/client/agent_client.dart';
 import 'package:flutter/material.dart';
 
 class PowerActionSheet extends StatelessWidget {
-  const PowerActionSheet({super.key});
+  final List<PowerAction> actions;
+
+  const PowerActionSheet({super.key, required this.actions});
 
   @override
-  Widget build(BuildContext context) => ListView(
-        children: [
-          ListTile(
-            leading: const Icon(Icons.power_settings_new),
-            title: const Text("Power off"),
-            subtitle: const Text("Shut down the system"),
-            onTap: () =>
-                Navigator.pop(context, PowerActionSheetResult.powerOff),
-          ),
-          ListTile(
-            leading: const Icon(Icons.restart_alt),
-            title: const Text("Restart"),
-            subtitle: const Text("Restart the system"),
-            onTap: () => Navigator.pop(context, PowerActionSheetResult.restart),
-          ),
-          ListTile(
-            leading: const Icon(Icons.logout),
-            title: const Text("Log out"),
-            subtitle: const Text("Log out of the current user"),
-            onTap: () => Navigator.pop(context, PowerActionSheetResult.logout),
-          ),
-        ],
-      );
-}
+  Widget build(BuildContext context) =>
+      ListView(children: _buildListViewItems(context));
 
-enum PowerActionSheetResult {
-  powerOff,
-  restart,
-  logout,
+  List<Widget> _buildListViewItems(BuildContext context) => actions
+      .map((action) => ListTile(
+            leading: Icon(action.icon),
+            title: Text(action.name),
+            subtitle: Text(action.description),
+            onTap: () => _onTapAction(action, context),
+          ))
+      .toList(growable: false);
+
+  void _onTapAction(PowerAction action, BuildContext context) {
+    Navigator.of(context).pop(action);
+  }
 }

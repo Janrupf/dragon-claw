@@ -45,12 +45,13 @@ class MyApp extends StatelessWidget {
           return MaterialApp.router(
             title: 'Dragon Claw',
             theme: ThemeData(
-                colorScheme: scheme,
-                useMaterial3: true,
-                snackBarTheme: const SnackBarThemeData(
-                  // Material 3, no idea why flutter doesn't already sets this
-                  behavior: SnackBarBehavior.floating,
-                )),
+              colorScheme: scheme,
+              useMaterial3: true,
+              snackBarTheme: const SnackBarThemeData(
+                // Material 3, no idea why flutter doesn't already sets this
+                behavior: SnackBarBehavior.floating,
+              ),
+            ),
             routerConfig: DragonClawRouter.instance,
           );
         },

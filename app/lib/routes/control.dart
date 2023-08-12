@@ -34,7 +34,13 @@ class ControlScreen extends StatefulWidget {
 }
 
 class _ControlScreenState extends State<ControlScreen> {
+  static final AgentVersion expectedAgentVersion = AgentVersion()
+    ..major = 1
+    ..minor = 0
+    ..patch = 0;
+
   _AvailableOptions? _availableOptions;
+  AgentVersion? _agentVersion;
 
   @override
   void initState() {
@@ -47,17 +53,43 @@ class _ControlScreenState extends State<ControlScreen> {
         });
       }
     });
+
+    widget._client.getVersion().then((value) {
+      if (mounted) {
+        setState(() {
+          _agentVersion = value;
+        });
+      }
+    });
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) {
+    final originalTheme = Theme.of(context);
+    final temporaryScaffoldTheme = Theme.of(context).copyWith(
+      // Override the bottom sheet of this screen to use the error color.
+      bottomSheetTheme: BottomSheetThemeData(
+        backgroundColor: Theme.of(context).colorScheme.error,
+      ),
+    );
+
+    // A bit of theme hackery to make the bottom sheet use the error color.
+    return Theme(
+      data: temporaryScaffoldTheme,
+      child: Scaffold(
         appBar: AppBar(
           title: Text("Control ${widget.agent.name}"),
         ),
-        body: _availableOptions == null
-            ? _buildLoading(context)
-            : _buildBody(context, _availableOptions!),
-      );
+        body: Theme(
+          data: originalTheme,
+          child: _availableOptions == null
+              ? _buildLoading(context)
+              : _buildBody(context, _availableOptions!),
+        ),
+        bottomSheet: _buildAgentVersionUpdateSheet(context),
+      ),
+    );
+  }
 
   /// Build the widget content while still loading the available options.
   Widget _buildLoading(BuildContext context) => const Center(
@@ -70,6 +102,36 @@ class _ControlScreenState extends State<ControlScreen> {
         client: widget._client,
         options: options,
       );
+
+  Widget? _buildAgentVersionUpdateSheet(BuildContext context) {
+    if (_agentVersion == null) {
+      return null;
+    }
+
+    if (_agentVersion!.major != expectedAgentVersion.major ||
+        _agentVersion!.minor != expectedAgentVersion.minor ||
+        _agentVersion!.patch != expectedAgentVersion.patch) {
+      final colorScheme = Theme.of(context).colorScheme;
+
+      return ListTile(
+        leading: Icon(Icons.warning, color: colorScheme.onError),
+        title: Text(
+          "Possibly incompatible agent version",
+          style: TextStyle(color: colorScheme.onError),
+        ),
+        subtitle: Text(
+          "Installed version: ${_agentVersion!.major}.${_agentVersion!.minor}.${_agentVersion!.patch}\n"
+          "Expected version: ${expectedAgentVersion.major}.${expectedAgentVersion.minor}.${expectedAgentVersion.patch}\n"
+          "\n"
+          "Using an incompatible agent version may result in unexpected behavior. "
+          "Please make sure you have both the latest Agent and App version installed.",
+          style: TextStyle(color: colorScheme.onError),
+        ),
+      );
+    }
+
+    return null;
+  }
 }
 
 class _ControlScreenContent extends StatelessWidget {

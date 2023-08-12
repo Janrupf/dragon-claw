@@ -20,6 +20,30 @@ impl DragonClawAgentImpl {
 
 #[tonic::async_trait]
 impl DragonClawAgent for DragonClawAgentImpl {
+    async fn get_agent_version(
+        &self,
+        _request: Request<()>,
+    ) -> Result<Response<AgentVersion>, Status> {
+        // Get the version from Cargo.toml
+        let major = env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap();
+        let minor = env!("CARGO_PKG_VERSION_MINOR").parse().unwrap();
+        let patch = env!("CARGO_PKG_VERSION_PATCH").parse().unwrap();
+        let pre = env!("CARGO_PKG_VERSION_PRE");
+
+        let version = AgentVersion {
+            major,
+            minor,
+            patch,
+            pre_release: if pre.is_empty() {
+                None
+            } else {
+                Some(pre.to_string())
+            },
+        };
+
+        Ok(Response::new(version))
+    }
+
     async fn get_supported_power_actions(
         &self,
         _request: Request<()>,

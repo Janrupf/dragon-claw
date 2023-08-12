@@ -5,6 +5,9 @@ import 'package:dragon_claw/generated/service.pbgrpc.dart' as rpc;
 import 'package:flutter/material.dart';
 import 'package:grpc/grpc.dart';
 
+/// The version of the agent.
+typedef AgentVersion = rpc.AgentVersion;
+
 /// Client to connect to the DragonClaw Agent
 class DragonClawAgentClient {
   final InternetAddress address;
@@ -24,7 +27,7 @@ class DragonClawAgentClient {
 
   /// Query the agent for the supported power actions.
   Future<Set<PowerAction>> getSupportedPowerActions() async {
-    var response = await _client.getSupportedPowerActions(rpc.Empty());
+    final response = await _client.getSupportedPowerActions(rpc.Empty());
     return response.actions.map(PowerAction.fromRpc).toSet();
   }
 
@@ -32,6 +35,11 @@ class DragonClawAgentClient {
   Future<void> performPowerAction(PowerAction action) async {
     await _client
         .performPowerAction(rpc.PowerActionRequest()..action = action.rpcValue);
+  }
+
+  /// Query the agent for its version.
+  Future<AgentVersion> getVersion() async {
+    return await _client.getAgentVersion(rpc.Empty());
   }
 }
 

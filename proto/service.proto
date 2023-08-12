@@ -3,6 +3,28 @@ package net.janrupf.dc;
 
 import "google/protobuf/empty.proto";
 
+message AgentVersion {
+  /**
+   * The major version number.
+   */
+  uint32 major = 1;
+
+  /**
+   * The minor version number.
+   */
+  uint32 minor = 2;
+
+  /**
+   * The patch version number.
+   */
+  uint32 patch = 3;
+
+  /**
+   * The pre-release version string.
+   */
+  optional string pre_release = 4;
+}
+
 /**
  * System power actions.
  */
@@ -69,6 +91,11 @@ message PowerActionRequest {
 }
 
 service DragonClawAgent {
+  /**
+   * Query the agent version.
+   */
+  rpc GetAgentVersion(google.protobuf.Empty) returns (AgentVersion);
+
   /**
    * Query which power actions are supported.
    */

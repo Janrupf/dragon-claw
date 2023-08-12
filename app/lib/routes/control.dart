@@ -1,4 +1,6 @@
 import 'package:dragon_claw/client/agent_client.dart';
+import 'package:dragon_claw/components/action.dart';
+import 'package:dragon_claw/components/control/power_action_sheet.dart';
 import 'package:dragon_claw/discovery/agent.dart';
 import 'package:flutter/material.dart';
 import 'package:grpc/grpc.dart';
@@ -20,13 +22,31 @@ class ControlScreen extends StatelessWidget {
         appBar: AppBar(
           title: Text("Control ${agent.name}"),
         ),
-        body: Center(
-          child: IconButton.filled(
-            iconSize: 64,
-            onPressed: () => _shutdownPressed(context),
-            icon: const Icon(Icons.power_settings_new),
-          ),
-        ),
+        body: Builder(builder: _buildBody),
+      );
+
+  Widget _buildBody(BuildContext context) => ListView(
+        children: [
+          IntrinsicHeight(
+            child: ActionWithOptions(
+              child: const ListTile(
+                leading: Icon(Icons.power_settings_new),
+                title: Text("Power off"),
+                subtitle: Text("Shut down the system"),
+              ),
+              onPressed: () => _shutdownPressed(context),
+              onOptionsPressed: () {
+                showModalBottomSheet(
+                  showDragHandle: true,
+                  useRootNavigator: true,
+                  isDismissible: true,
+                  context: context,
+                  builder: (context) => const PowerActionSheet(),
+                );
+              },
+            ),
+          )
+        ],
       );
 
   void _shutdownPressed(BuildContext context) {

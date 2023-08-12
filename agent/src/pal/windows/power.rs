@@ -1,9 +1,10 @@
+use crate::pal::platform::util::ToWin32ErrorCode;
 use crate::pal::platform::PlatformError;
 use crate::pal::power::{PowerAction, PowerManager};
 use crate::pal::PlatformAbstractionError;
 use windows::core::{Error as Win32Error, PCWSTR};
 use windows::w as wide_string;
-use windows::Win32::Foundation::BOOLEAN;
+use windows::Win32::Foundation::{BOOLEAN, ERROR_ENVVAR_NOT_FOUND};
 use windows::Win32::System::Power::SetSuspendState;
 use windows::Win32::System::Shutdown::{
     InitiateSystemShutdownExW, SHTDN_REASON_FLAG_PLANNED, SHTDN_REASON_MAJOR_OTHER,
@@ -20,6 +21,7 @@ const EFI_GLOBAL_VARIABLE: PCWSTR = wide_string!("{8BE4DF61-93CA-11D2-AA0D-00E09
 const EFI_OS_INDICATION_SUPPORTED: PCWSTR = wide_string!("OsIndicationsSupported");
 const EFI_OS_INDICATIONS: PCWSTR = wide_string!("OsIndications");
 const EFI_OS_INDICATIONS_BOOT_TO_FW_UI: u64 = 0x0000000000000001;
+const EFI_VARIABLE_ATTRIBUTE_NON_VOLATILE: u32 = 0x1;
 
 const EFI_VARIABLE_ATTRIBUTE_BOOTSERVICE_ACCESS: u32 = 0x2;
 const EFI_VARIABLE_ATTRIBUTE_RUNTIME_ACCESS: u32 = 0x4;
@@ -77,6 +79,7 @@ impl WindowsPowerManager {
         Ok(())
     }
 
+    //noinspection DuplicatedCode
     fn can_reboot_to_firmware(&self) -> bool {
         if !self.has_system_environment_privilege {
             // We can't access UEFI variables, so we can't reboot to the firmware UI
@@ -108,8 +111,9 @@ impl WindowsPowerManager {
 
             // Read the OsIndicationsSupported variable to see if we can reboot to the firmware UI
             let mut os_indications_support: u64 = 0;
-            let mut attributes =
-                EFI_VARIABLE_ATTRIBUTE_BOOTSERVICE_ACCESS | EFI_VARIABLE_ATTRIBUTE_RUNTIME_ACCESS;
+            let mut attributes = EFI_VARIABLE_ATTRIBUTE_NON_VOLATILE
+                | EFI_VARIABLE_ATTRIBUTE_BOOTSERVICE_ACCESS
+                | EFI_VARIABLE_ATTRIBUTE_RUNTIME_ACCESS;
 
             if GetFirmwareEnvironmentVariableExW(
                 EFI_OS_INDICATION_SUPPORTED,
@@ -145,8 +149,9 @@ impl WindowsPowerManager {
     fn set_reboot_to_firmware(&self) -> Result<(), Win32Error> {
         unsafe {
             let mut os_indications: u64 = 0;
-            let mut attributes =
-                EFI_VARIABLE_ATTRIBUTE_BOOTSERVICE_ACCESS | EFI_VARIABLE_ATTRIBUTE_RUNTIME_ACCESS;
+            let mut attributes = EFI_VARIABLE_ATTRIBUTE_NON_VOLATILE
+                | EFI_VARIABLE_ATTRIBUTE_BOOTSERVICE_ACCESS
+                | EFI_VARIABLE_ATTRIBUTE_RUNTIME_ACCESS;
 
             if GetFirmwareEnvironmentVariableExW(
                 EFI_OS_INDICATIONS,
@@ -157,8 +162,17 @@ impl WindowsPowerManager {
             ) == 0
             {
                 let err = Win32Error::from_win32();
-                tracing::error!("Failed to read OsIndications: {}", err);
-                return Err(err);
+
+                if err.to_win32_error_code() != ERROR_ENVVAR_NOT_FOUND {
+                    tracing::error!("Failed to read OsIndications: {}", err);
+                    return Err(err);
+                }
+
+                // If the variable doesn't exist, treat it as if it was 0
+                os_indications = 0;
+                attributes = EFI_VARIABLE_ATTRIBUTE_NON_VOLATILE
+                    | EFI_VARIABLE_ATTRIBUTE_BOOTSERVICE_ACCESS
+                    | EFI_VARIABLE_ATTRIBUTE_RUNTIME_ACCESS;
             }
 
             // Set the bit
@@ -201,8 +215,6 @@ impl PowerManager for WindowsPowerManager {
                 actions.push(PowerAction::RebootToFirmware);
             }
         }
-
-        self.can_reboot_to_firmware();
 
         Ok(actions)
     }

@@ -45,3 +45,43 @@ jobs:
           path: |
             target/${{ matrix.rust-target }}/debug/dragon-claw-agent
             target/${{ matrix.rust-target }}/debug/dragon-claw-agent.exe
+
+  build-android-app:
+    name: "Build android app"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "stable"
+
+      - name: Install Pub packages
+        run: flutter pub get
+        working-directory: app
+
+      - name: Install Dart protobuf plugin
+        run: flutter pub global activate protoc_plugin
+        working-directory: app
+
+      - name: Generate protobufs
+        run: ./gen-protobufs.sh
+        working-directory: app
+
+      - name: Build APK
+        run: flutter build apk --debug
+        working-directory: app
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: dragon-claw-app
+          path: app/build/app/outputs/flutter-apk/app-debug.apk

@@ -15,7 +15,7 @@
                     <File Id="DragonClawAgentEXE" Name="dragon-claw-agent.exe" DiskId="1"
                           Source="target\release\dragon-claw-agent.exe" KeyPath="yes"/>
                     <ServiceInstall Name="DragonClawAgent" Type="ownProcess" Start="auto" ErrorControl="ignore"
-                                    Account="NT AUTHORITY\NetworkService"
+                                    Account="LocalSystem"
                                     DisplayName="Dragon Claw Agent"
                                     Description="The agent which allows remote control via the Dragon Claw App"/>
                     <ServiceControl Name="DragonClawAgent" Remove="uninstall" Start="install" Stop="uninstall"

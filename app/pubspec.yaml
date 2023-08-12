@@ -38,6 +38,9 @@ dependencies:
 
   grpc: ^3.2.3
   protobuf: ^3.0.0
+  package_info_plus: ^4.1.0
+  provider: ^6.0.5
+  url_launcher: ^6.1.12
 
 dev_dependencies:
   flutter_test:

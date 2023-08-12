@@ -1,7 +1,9 @@
 import 'package:dragon_claw/routing.dart';
+import 'package:dragon_claw/updater/updater.dart';
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
+import 'package:provider/provider.dart';
 
 void main() {
   Logger.root.level = Level.ALL;
@@ -21,7 +23,10 @@ void main() {
     }
   });
 
-  runApp(const MyApp());
+  runApp(Provider(
+    create: (context) => AppUpdater(),
+    child: const MyApp(),
+  ));
 }
 
 class MyApp extends StatelessWidget {

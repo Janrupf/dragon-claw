@@ -1,33 +1,37 @@
+mod discovery;
 mod dns;
+mod power;
 mod process;
 mod service;
+mod status;
 mod util;
 
-use crate::pal::platform::discovery::dispatcher::ServiceDispatcher;
-use crate::pal::platform::discovery::ServiceEnvironment;
+use crate::pal::platform::discovery::WindowsDiscoveryManager;
+use crate::pal::platform::power::WindowsPowerManager;
 use crate::pal::platform::process::OwnProcess;
-use std::net::SocketAddr;
+use crate::pal::platform::service::dispatcher::ServiceDispatcher;
+use crate::pal::platform::service::ServiceEnvironment;
+use crate::pal::platform::status::WindowsStatusManager;
+use crate::pal::{PlatformAbstractionError, PlatformAbstractionLayer, ShutdownRequestFut};
 use std::sync::Arc;
 use thiserror::Error;
-use tokio::sync::Mutex;
-use windows::core::{Error as Win32Error, PCWSTR};
-
-use crate::pal::platform::dns::ServiceDnsRegistration;
-use crate::pal::{ApplicationStatus, PlatformAbstractionError, ShutdownRequestFut};
+use windows::core::Error as Win32Error;
 
 #[derive(Debug)]
 pub struct PlatformInitData {
     process: OwnProcess,
     service_environment: ServiceEnvironment,
     service_dispatcher: Option<Arc<ServiceDispatcher>>,
+    has_shutdown_privilege: bool,
 }
 
 #[derive(Debug)]
 pub struct PlatformAbstractionImpl {
     process: OwnProcess,
     service_environment: ServiceEnvironment,
-    service_dispatcher: Option<Arc<ServiceDispatcher>>,
-    dns_registration: Mutex<Option<ServiceDnsRegistration>>,
+    power_manager: WindowsPowerManager,
+    discovery_manager: WindowsDiscoveryManager,
+    status_manager: WindowsStatusManager,
 }
 
 impl PlatformAbstractionImpl {
@@ -59,9 +63,14 @@ impl PlatformAbstractionImpl {
         let process = OwnProcess::open().map_err(PlatformError::Win32)?;
 
         // Make sure we can shutdown the system
-        if let Err(err) = process.enable_privileges(&[windows::Win32::Security::SE_SHUTDOWN_NAME]) {
-            tracing::warn!("Failed to enable shutdown privilege: {}", err);
-        }
+        let has_shutdown_privilege =
+            match process.enable_privileges(&[windows::Win32::Security::SE_SHUTDOWN_NAME]) {
+                Ok(()) => true,
+                Err(err) => {
+                    tracing::warn!("Failed to enable shutdown privilege: {}", err);
+                    false
+                }
+            };
 
         let service_environment = match ServiceEnvironment::detect(&process) {
             Ok(v) => v,
@@ -78,6 +87,7 @@ impl PlatformAbstractionImpl {
             process,
             service_environment,
             service_dispatcher: None,
+            has_shutdown_privilege,
         })
     }
 
@@ -85,100 +95,31 @@ impl PlatformAbstractionImpl {
         Ok(Self {
             process: data.process,
             service_environment: data.service_environment,
-            service_dispatcher: data.service_dispatcher,
-            dns_registration: Mutex::new(None),
+            discovery_manager: WindowsDiscoveryManager::new(),
+            status_manager: WindowsStatusManager::new(data.service_dispatcher),
+            power_manager: WindowsPowerManager::new(data.has_shutdown_privilege),
         })
     }
+}
 
-    pub async fn advertise_service(
-        &self,
-        addr: SocketAddr,
-    ) -> Result<(), PlatformAbstractionError> {
-        let mut dns_registration = self.dns_registration.lock().await;
-        if let Some(registration) = dns_registration.take() {
-            // If the service is registered we need to deregister it first
-            registration
-                .perform_deregistration()
-                .await
-                .map_err(PlatformError::Win32)?;
-        }
+#[async_trait::async_trait]
+impl PlatformAbstractionLayer for PlatformAbstractionImpl {
+    type PowerManager = WindowsPowerManager;
 
-        // Attempt to register the service
-        let registration = ServiceDnsRegistration::create(addr).map_err(PlatformError::Win32)?;
-        registration
-            .perform_registration()
-            .await
-            .map_err(PlatformError::Win32)?;
-
-        // Replace the old registration with the new one
-        dns_registration.replace(registration);
-
-        Ok(())
+    fn power_manager(&self) -> Option<&Self::PowerManager> {
+        Some(&self.power_manager)
     }
 
-    pub async fn stop_advertising_service(&self) -> Result<(), PlatformAbstractionError> {
-        let mut dns_registration = self.dns_registration.lock().await;
-        if let Some(registration) = dns_registration.take() {
-            // If the service is registered we deregister it
-            registration
-                .perform_deregistration()
-                .await
-                .map_err(PlatformError::Win32)?;
-        }
+    type DiscoveryManager = WindowsDiscoveryManager;
 
-        Ok(())
+    fn discovery_manager(&self) -> Option<&Self::DiscoveryManager> {
+        Some(&self.discovery_manager)
     }
 
-    pub async fn shutdown_system(&self) -> Result<(), PlatformAbstractionError> {
-        unsafe {
-            use windows::Win32::System::Shutdown as shtdn;
+    type StatusManager = WindowsStatusManager;
 
-            if !shtdn::InitiateSystemShutdownExW(
-                PCWSTR::null(),
-                PCWSTR::null(),
-                5, // This should give us a chance to send the response over RPC
-                true,
-                false,
-                shtdn::SHTDN_REASON_MAJOR_OTHER
-                    | shtdn::SHTDN_REASON_MINOR_OTHER
-                    | shtdn::SHTDN_REASON_FLAG_PLANNED,
-            )
-            .as_bool()
-            {
-                let err = Win32Error::from_win32();
-                tracing::error!("Failed to initiate a system shutdown: {}", err);
-                return Err(PlatformError::Win32(err).into());
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn set_status(&self, status: ApplicationStatus) {
-        let Some(service_dispatcher) = self.service_dispatcher.as_ref() else {
-            // If we don't have a service dispatcher we don't need to report the status
-            return;
-        };
-
-        let res = match status {
-            ApplicationStatus::Starting => service_dispatcher.report_start_pending(),
-            ApplicationStatus::Running => service_dispatcher.report_running(),
-            ApplicationStatus::Stopping => service_dispatcher.report_stopping(),
-            ApplicationStatus::Stopped => service_dispatcher.report_stopped_ok(),
-            ApplicationStatus::PlatformError(PlatformAbstractionError::Platform(
-                PlatformError::Win32(err),
-            )) => service_dispatcher.report_stopped_win32(err),
-            ApplicationStatus::PlatformError(_) => {
-                service_dispatcher.report_stopped_application_err(1)
-            }
-            ApplicationStatus::ApplicationError(_) => {
-                service_dispatcher.report_stopped_application_err(2)
-            }
-        };
-
-        if let Err(err) = res {
-            tracing::warn!("Failed to report service status: {}", err);
-        }
+    fn status_manager(&self) -> &Self::StatusManager {
+        &self.status_manager
     }
 }
 

@@ -259,3 +259,4 @@ impl Drop for ServiceDnsRegistration {
 // The rust compiler complains about not being able to send pointers across threads -
 // we don't hold pointers that are valid on only one thread.
 unsafe impl Send for ServiceDnsRegistration {}
+unsafe impl Sync for ServiceDnsRegistration {}

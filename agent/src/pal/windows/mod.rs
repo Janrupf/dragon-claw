@@ -23,6 +23,7 @@ pub struct PlatformInitData {
     service_environment: ServiceEnvironment,
     service_dispatcher: Option<Arc<ServiceDispatcher>>,
     has_shutdown_privilege: bool,
+    has_system_environment_privilege: bool,
 }
 
 #[derive(Debug)]
@@ -72,6 +73,17 @@ impl PlatformAbstractionImpl {
                 }
             };
 
+        // Additionally we would like to access UEFI variables for reboot-to-firmware
+        let has_system_environment_privilege = match process
+            .enable_privileges(&[windows::Win32::Security::SE_SYSTEM_ENVIRONMENT_NAME])
+        {
+            Ok(()) => true,
+            Err(err) => {
+                tracing::warn!("Failed to enable system environment privilege: {}", err);
+                false
+            }
+        };
+
         let service_environment = match ServiceEnvironment::detect(&process) {
             Ok(v) => v,
             Err(err) => {
@@ -88,6 +100,7 @@ impl PlatformAbstractionImpl {
             service_environment,
             service_dispatcher: None,
             has_shutdown_privilege,
+            has_system_environment_privilege,
         })
     }
 
@@ -97,7 +110,10 @@ impl PlatformAbstractionImpl {
             service_environment: data.service_environment,
             discovery_manager: WindowsDiscoveryManager::new(),
             status_manager: WindowsStatusManager::new(data.service_dispatcher),
-            power_manager: WindowsPowerManager::new(data.has_shutdown_privilege),
+            power_manager: WindowsPowerManager::new(
+                data.has_shutdown_privilege,
+                data.has_system_environment_privilege,
+            ),
         })
     }
 }

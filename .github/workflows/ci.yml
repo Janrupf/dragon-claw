@@ -1,0 +1,47 @@
+name: Run build
+on:
+  push:
+    branches:
+      - main
+
+permissions: read-all
+
+jobs:
+  build-agent:
+    name: "Build agent for ${{ matrix.os-name }}"
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+        include:
+          - os: ubuntu-latest
+            os-name: Linux
+            rust-target: x86_64-unknown-linux-gnu
+
+          - os: windows-latest
+            os-name: Windows
+            rust-target: x86_64-pc-windows-msvc
+
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build agent
+        run: |
+          cargo build --target ${{ matrix.rust-target }} --package dragon-claw-agent --bin dragon-claw-agent
+
+      - name: Upload agent executable
+        uses: actions/upload-artifact@v3
+        with:
+          name: dragon-claw-agent
+          path: |
+            target/${{ matrix.rust-target }}/debug/dragon-claw-agent
+            target/${{ matrix.rust-target }}/debug/dragon-claw-agent.exe

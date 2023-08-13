@@ -34,9 +34,9 @@ function Convert-ToRtf {
 
 $ErrorActionPreference = "Stop"
 
-Convert-ToRtf -InputFile .\LICENSE -OutputFile .\target\release\LICENSE.rtf
+Convert-ToRtf -InputFile .\LICENSE -OutputFile .\target\x86_64-pc-windows-msvc\release\LICENSE.rtf
 
-Run-BuildCommand -Command cargo -Arguments "build", "--release"
+Run-BuildCommand -Command cargo -Arguments "build", "--release", "--target", "x86_64-pc-windows-msvc"
 Run-BuildCommand -Command wix -Arguments "extension", "add", "WixToolset.UI.wixext"
 Run-BuildCommand -Command wix -Arguments "extension", "add", "WixToolset.Firewall.wixext"
 Run-BuildCommand -Command wix -Arguments @(
@@ -45,5 +45,5 @@ Run-BuildCommand -Command wix -Arguments @(
     ".\installer.wxs",
     "-ext", "WixToolset.UI.wixext", "-ext",
     "WixToolset.Firewall.wixext",
-    "-out", "target/release/dragon-claw-installer.msi"
+    "-out", "target/x86_64-pc-windows-msvc/release/dragon-claw-agent-installer.msi"
 )

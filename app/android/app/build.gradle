@@ -42,7 +42,6 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId "net.janrupf.dragon_claw"
 
         minSdkVersion 21
@@ -51,11 +50,22 @@ android {
         versionName flutterVersionName
     }
 
-    buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig signingConfigs.debug
+    def keystore = System.getenv("DRAGON_CLAW_KEYSTORE")
+
+    if (keystore != null) {
+        signingConfigs {
+            release {
+                storeFile = file(keystore)
+                storePassword = System.getenv("DRAGON_CLAW_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("DRAGON_CLAW_KEYSTORE_KEY_ALIAS")
+                keyPassword = System.getenv("DRAGON_CLAW_KEYSTORE_KEY_PASSWORD")
+            }
+        }
+
+        buildTypes {
+            release {
+                signingConfig(signingConfigs.release)
+            }
         }
     }
 }

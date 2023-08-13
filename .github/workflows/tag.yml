@@ -1,0 +1,120 @@
+name: Run release build
+on:
+  push:
+    tags:
+      - v*
+
+permissions: read-all
+
+jobs:
+  build-agent:
+    name: "Build agent for ${{ matrix.os-name }}"
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+        include:
+          - os: ubuntu-latest
+            os-name: Linux
+            rust-target: x86_64-unknown-linux-gnu
+
+          - os: windows-latest
+            os-name: Windows
+            rust-target: x86_64-pc-windows-msvc
+
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build agent
+        run: |
+          cargo build --release --target ${{ matrix.rust-target }} --package dragon-claw-agent --bin dragon-claw-agent
+
+      - name: Upload agent executable
+        uses: actions/upload-artifact@v3
+        with:
+          name: dragon-claw-agent
+          path: |
+            target/${{ matrix.rust-target }}/release/dragon-claw-agent
+            target/${{ matrix.rust-target }}/release/dragon-claw-agent.exe
+
+      - name: Build installer
+        if: runner.os == 'Windows'
+        run: .\build-installer.ps1
+
+      - name: Upload installer
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v3
+        with:
+          name: dragon-claw-agent
+          path: |
+            target/${{ matrix.rust-target }}/release/dragon-claw-agent-installer.msi
+
+  build-android-app:
+    name: "Build android app"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Install protoc
+        uses: arduino/setup-protoc@v2
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: "master"
+
+      - name: Install Java 17
+        uses: actions/setup-java@v2
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Install Pub packages
+        run: flutter pub get
+        working-directory: app
+
+      - name: Install Dart protobuf plugin
+        run: flutter pub global activate protoc_plugin
+        working-directory: app
+
+      - name: Generate protobufs
+        run: ./gen-protobufs.sh
+        working-directory: app
+
+      - name: Unpack keystore
+        run: |
+          temp_file="$(mktemp)"
+          printf "$DRAGON_CLAW_KEYSTORE_BASE64" | base64 -d > "$temp_file"
+          
+          echo "DRAGON_CLAW_KEYSTORE=$temp_file" >> "$GITHUB_ENV"
+          echo "Unpacked keystore to $temp_file"
+        env:
+          DRAGON_CLAW_KEYSTORE_BASE64: ${{ secrets.DRAGON_CLAW_KEYSTORE_BASE64 }}
+
+      - name: Build APK
+        run: flutter build apk --release
+        working-directory: app
+        env:
+          DRAGON_CLAW_KEYSTORE: ${{ env.DRAGON_CLAW_KEYSTORE }}
+          DRAGON_CLAW_KEYSTORE_PASSWORD: ${{ secrets.DRAGON_CLAW_KEYSTORE_PASSWORD }}
+          DRAGON_CLAW_KEYSTORE_KEY_ALIAS: ${{ secrets.DRAGON_CLAW_KEYSTORE_KEY_ALIAS }}
+          DRAGON_CLAW_KEYSTORE_KEY_PASSWORD: ${{ secrets.DRAGON_CLAW_KEYSTORE_KEY_PASSWORD }}
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: dragon-claw-app
+          path: app/build/app/outputs/flutter-apk/app-release.apk

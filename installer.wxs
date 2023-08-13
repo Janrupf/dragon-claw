@@ -13,7 +13,7 @@
             <Directory Id="INSTALLDIR" Name="DragonClawAgent">
                 <Component Id="DragonClawAgent" Bitness="always64">
                     <File Id="DragonClawAgentEXE" Name="dragon-claw-agent.exe" DiskId="1"
-                          Source="target\release\dragon-claw-agent.exe" KeyPath="yes"/>
+                          Source="target\release\x86_64-pc-windows-msvc\dragon-claw-agent.exe" KeyPath="yes"/>
                     <ServiceInstall Name="DragonClawAgent" Type="ownProcess" Start="auto" ErrorControl="ignore"
                                     Account="LocalSystem"
                                     DisplayName="Dragon Claw Agent"
@@ -38,7 +38,7 @@
         </InstallExecuteSequence>
 
         <ui:WixUI Id="WixUI_FeatureTree" InstallDirectory="INSTALLDIR"/>
-        <WixVariable Id="WixUILicenseRtf" Value="target\release\LICENSE.rtf"/>
+        <WixVariable Id="WixUILicenseRtf" Value="target\x86_64-pc-windows-msvc\release\LICENSE.rtf"/>
         <WixVariable Id="WixUIDialogBmp" Value="assets\icon\build\wix-installer-dialog\icon.png"/>
         <WixVariable Id="WixUIBannerBmp" Value="assets\icon\build\wix-installer-banner\icon.png"/>
 

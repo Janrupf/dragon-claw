@@ -13,7 +13,7 @@
             <Directory Id="INSTALLDIR" Name="DragonClawAgent">
                 <Component Id="DragonClawAgent" Bitness="always64">
                     <File Id="DragonClawAgentEXE" Name="dragon-claw-agent.exe" DiskId="1"
-                          Source="target\release\x86_64-pc-windows-msvc\dragon-claw-agent.exe" KeyPath="yes"/>
+                          Source="target\x86_64-pc-windows-msvc\release\dragon-claw-agent.exe" KeyPath="yes"/>
                     <ServiceInstall Name="DragonClawAgent" Type="ownProcess" Start="auto" ErrorControl="ignore"
                                     Account="LocalSystem"
                                     DisplayName="Dragon Claw Agent"

@@ -46,6 +46,16 @@ jobs:
             target/${{ matrix.rust-target }}/release/dragon-claw-agent
             target/${{ matrix.rust-target }}/release/dragon-claw-agent.exe
 
+      - name: Install dotnet
+        if: runner.os == 'Windows'
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 7.x.x
+
+      - name: Install WiX
+        if: runner.os == 'Windows'
+        run: dotnet tool install --global wix
+
       - name: Build installer
         if: runner.os == 'Windows'
         run: .\build-installer.ps1

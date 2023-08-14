@@ -15,6 +15,7 @@ use crate::proto::{DragonClawAgentImpl, DragonClawAgentServer};
 mod error;
 mod pal;
 mod proto;
+mod ssdp;
 
 fn main() {
     // Set up logging using tracing
@@ -98,23 +99,17 @@ async fn runner(
 
     tracing::debug!("Listening on {}", local_addr);
     let discovery_manager = pal.discovery_manager();
-    if discovery_manager.is_none() {
-        tracing::warn!("Discovery not available, not advertising service");
-    }
 
-    let service_advertised = if let Some(discovery_manager) = discovery_manager {
-        if let Err(err) = discovery_manager.advertise_service(local_addr).await {
-            tracing::warn!(
-                "Failed to advertise service, discovery not available: {}",
-                err
-            );
+    let service_advertised = if let Err(err) = discovery_manager.advertise_service(local_addr).await
+    {
+        tracing::warn!(
+            "Failed to advertise service, discovery not available: {}",
+            err
+        );
 
-            false
-        } else {
-            true
-        }
-    } else {
         false
+    } else {
+        true
     };
 
     let incoming =
@@ -143,10 +138,8 @@ async fn runner(
         .await;
 
     if service_advertised {
-        if let Some(discovery_manager) = discovery_manager {
-            if let Err(err) = discovery_manager.stop_advertising_service().await {
-                tracing::warn!("Failed to stop advertising service: {}", err);
-            }
+        if let Err(err) = discovery_manager.stop_advertising_service().await {
+            tracing::warn!("Failed to stop advertising service: {}", err);
         }
     }
 

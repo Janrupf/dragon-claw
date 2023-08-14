@@ -56,7 +56,7 @@ impl PlatformAbstraction {
     }
 
     /// Retrieves the discovery manager.
-    pub fn discovery_manager(&self) -> Option<&PlatformDiscoveryManager> {
+    pub fn discovery_manager(&self) -> &PlatformDiscoveryManager {
         self.platform.discovery_manager()
     }
 
@@ -77,7 +77,7 @@ pub trait PlatformAbstractionLayer: Send + Sync + 'static {
     type DiscoveryManager: DiscoveryManager;
 
     /// Retrieves the discovery manager.
-    fn discovery_manager(&self) -> Option<&Self::DiscoveryManager>;
+    fn discovery_manager(&self) -> &Self::DiscoveryManager;
 
     /// The type of the status manager.
     type StatusManager: StatusManager;

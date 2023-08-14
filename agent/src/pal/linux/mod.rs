@@ -15,7 +15,7 @@ pub type PlatformInitData = ();
 #[derive(Debug)]
 pub struct PlatformAbstractionImpl {
     dbus_system_connection: zbus::Connection,
-    service_manager: Option<LinuxDiscoveryManager>,
+    discovery_manager: LinuxDiscoveryManager,
     power_manager: Option<LinuxPowerManager>,
 }
 
@@ -43,14 +43,14 @@ impl PlatformAbstractionImpl {
         );
 
         // Attempt to connect to Avahi
-        let service_manager = LinuxDiscoveryManager::try_connect(&dbus_system_connection).await;
+        let service_manager = LinuxDiscoveryManager::new(&dbus_system_connection).await;
 
         // Connect to Login1 Manager
         let power_manager = LinuxPowerManager::try_connect(&dbus_system_connection).await;
 
         Ok(Self {
             dbus_system_connection,
-            service_manager,
+            discovery_manager: service_manager,
             power_manager,
         })
     }
@@ -65,8 +65,8 @@ impl PlatformAbstractionLayer for PlatformAbstractionImpl {
 
     type DiscoveryManager = LinuxDiscoveryManager;
 
-    fn discovery_manager(&self) -> Option<&Self::DiscoveryManager> {
-        self.service_manager.as_ref()
+    fn discovery_manager(&self) -> &Self::DiscoveryManager {
+        &self.discovery_manager
     }
 
     type StatusManager = LinuxStatusManager;

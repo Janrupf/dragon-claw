@@ -2,49 +2,56 @@ use crate::pal::discovery::DiscoveryManager;
 use crate::pal::platform::dbus::avahi::{AvahiEntryGroupProxy, AvahiServer2Proxy};
 use crate::pal::platform::dbus::dbus_call;
 use crate::pal::PlatformAbstractionError;
+use crate::ssdp::{IpAddrWithScopeId, SSDPMulticast};
 use std::borrow::Cow;
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
 pub struct LinuxDiscoveryManager {
-    avahi: AvahiServer2Proxy<'static>,
+    avahi: Option<AvahiServer2Proxy<'static>>,
     registered_dns_service: Mutex<Option<AvahiEntryGroupProxy<'static>>>,
+    ssdp: Mutex<Option<SSDPMulticast>>,
 }
 
 impl LinuxDiscoveryManager {
-    /// Attempts to connect to Avahi and returns a new instance if successful.
-    pub async fn try_connect(dbus_connection: &zbus::Connection) -> Option<Self> {
+    /// Attempts to connect to Avahi.
+    pub async fn new(dbus_connection: &zbus::Connection) -> Self {
         let avahi = match dbus_call!(AvahiServer2Proxy::new(dbus_connection)).await {
-            Ok(v) => v,
+            Ok(avahi) => {
+                if let Err(err) = dbus_call!(avahi.get_version_string()).await {
+                    tracing::warn!("Failed to get Avahi version: {}", err);
+                    None
+                } else {
+                    Some(avahi)
+                }
+            }
             Err(err) => {
                 tracing::warn!(
-                    "Failed to connect to Avahi, discovery will be unavailable: {}",
+                    "Failed to connect to Avahi, mDNS discovery will be unavailable: {}",
                     err
                 );
-                return None;
+                None
             }
         };
 
-        if let Err(err) = dbus_call!(avahi.get_version_string()).await {
-            tracing::warn!("Failed to get Avahi version: {}", err);
-            return None;
-        }
-
-        Some(Self {
+        Self {
             avahi,
             registered_dns_service: Mutex::new(None),
-        })
+            ssdp: Mutex::new(None),
+        }
     }
-}
 
-#[async_trait::async_trait]
-impl DiscoveryManager for LinuxDiscoveryManager {
-    async fn advertise_service(&self, addr: SocketAddr) -> Result<(), PlatformAbstractionError> {
-        let version = dbus_call!(self.avahi.get_version_string()).await?;
+    async fn advertise_with_avahi(&self, addr: SocketAddr) -> Result<(), PlatformAbstractionError> {
+        let avahi = self
+            .avahi
+            .as_ref()
+            .ok_or(PlatformAbstractionError::Unsupported)?;
+
+        let version = dbus_call!(avahi.get_version_string()).await?;
         tracing::info!("Avahi version: {}", version);
 
-        let host_name = match dbus_call!(self.avahi.get_host_name()).await {
+        let host_name = match dbus_call!(avahi.get_host_name()).await {
             Ok(v) => Cow::Owned(v),
             Err(err) => {
                 tracing::warn!("Failed to get host name: {}", err);
@@ -53,7 +60,7 @@ impl DiscoveryManager for LinuxDiscoveryManager {
         };
         tracing::info!("Host name: {}", host_name);
 
-        let group = dbus_call!(self.avahi.entry_group_new()).await?;
+        let group = dbus_call!(avahi.entry_group_new()).await?;
 
         dbus_call!(group.add_service(
             -1, // All interfaces
@@ -80,16 +87,121 @@ impl DiscoveryManager for LinuxDiscoveryManager {
         Ok(())
     }
 
+    /// Advertises the service using SSDP.
+    async fn advertise_with_ssdp(&self, addr: SocketAddr) -> Result<(), PlatformAbstractionError> {
+        self.stop_ssdp().await;
+
+        let multicast_manager = SSDPMulticast::setup(addr, Self::get_local_addresses).await?;
+        self.ssdp.lock().await.replace(multicast_manager);
+
+        Ok(())
+    }
+
+    async fn stop_ssdp(&self) {
+        if let Some(ssdp) = self.ssdp.lock().await.take() {
+            // Stop all the SSDP multicast sockets
+            ssdp.stop().await;
+        }
+    }
+
+    fn get_local_addresses() -> Result<Vec<IpAddrWithScopeId>, std::io::Error> {
+        let mut addresses = std::ptr::null_mut();
+        if unsafe { libc::getifaddrs(&mut addresses) } == -1 {
+            // Failed to get the addresses
+            return Err(std::io::Error::last_os_error());
+        }
+
+        let mut out = Vec::new();
+
+        let mut next = addresses;
+        while !next.is_null() {
+            // Get the current address
+            let current = unsafe { &*next };
+            if current.ifa_addr.is_null() {
+                next = current.ifa_next;
+                continue;
+            }
+
+            let current_address = unsafe { &*current.ifa_addr };
+
+            // Get the address family
+            let family = current_address.sa_family as libc::c_int;
+
+            match family {
+                libc::AF_INET => {
+                    let address = unsafe { &*(current.ifa_addr as *const libc::sockaddr_in) };
+                    out.push(IpAddrWithScopeId::V4(Ipv4Addr::from(
+                        address.sin_addr.s_addr.to_le_bytes(),
+                    )));
+                }
+
+                libc::AF_INET6 => {
+                    let address = unsafe { &*(current.ifa_addr as *const libc::sockaddr_in6) };
+                    out.push(IpAddrWithScopeId::V6 {
+                        addr: Ipv6Addr::from(address.sin6_addr.s6_addr),
+                        scope_id: address.sin6_scope_id,
+                    });
+                }
+
+                _ => {
+                    // Unknown address family
+                }
+            };
+
+            next = current.ifa_next;
+        }
+
+        unsafe { libc::freeifaddrs(addresses) };
+
+        tracing::trace!("Local addresses: {:?}", out);
+
+        Ok(out)
+    }
+}
+
+#[async_trait::async_trait]
+impl DiscoveryManager for LinuxDiscoveryManager {
+    async fn advertise_service(&self, addr: SocketAddr) -> Result<(), PlatformAbstractionError> {
+        let (avahi_res, ssdp_res) = tokio::join!(
+            self.advertise_with_avahi(addr),
+            self.advertise_with_ssdp(addr)
+        );
+
+        if let Err(err) = &avahi_res {
+            tracing::warn!("Failed to advertise with Avahi: {}", err);
+        }
+
+        if let Err(err) = &ssdp_res {
+            tracing::warn!("Failed to advertise with SSDP: {}", err);
+        }
+
+        let success = avahi_res.is_ok() || ssdp_res.is_ok();
+        if !success {
+            Err(PlatformAbstractionError::Unsupported)
+        } else {
+            Ok(())
+        }
+    }
+
     async fn stop_advertising_service(&self) -> Result<(), PlatformAbstractionError> {
+        let mut error = None;
+
         // Take the group out of the mutex
         let mut registered_dns_service = self.registered_dns_service.lock().await;
-        let group = match registered_dns_service.take() {
-            Some(v) => v,
-            None => return Ok(()),
-        };
+        if let Some(group) = registered_dns_service.take() {
+            // Release the group
+            if let Err(err) = dbus_call!(group.free()).await {
+                tracing::warn!("Failed to free Avahi group: {}", err);
+                error = Some(err);
+            }
+        }
 
-        // Release the group
-        dbus_call!(group.free()).await?;
-        Ok(())
+        // Stop the SSDP multicast sockets
+        self.stop_ssdp().await;
+
+        match error {
+            None => Ok(()),
+            Some(err) => Err(err.into()),
+        }
     }
 }

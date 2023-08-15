@@ -181,10 +181,14 @@ class SSDPDiscovery {
 
     // Start all senders
     for (final socket in _sendSockets) {
-      final sender = _SSDPSender(socket);
+      final sender = _SSDPSender(socket, serviceName);
       _senders.add(sender);
 
-      final subscription = socket.listen(sender.onEvent);
+      final subscription = socket.listen(
+        sender.onEvent,
+        onError: sender.onError,
+        cancelOnError: false,
+      );
       _socketSubscriptions.add(subscription);
     }
   }
@@ -603,13 +607,16 @@ class _SSDPReceiver {
 /// Helper for sending SSDP messages.
 class _SSDPSender {
   final RawDatagramSocket socket;
+  final String serviceName;
+  final Uint8List _searchMessage;
   late final Timer _timer;
 
   bool _timerExpired = false;
   bool _writeReady = false;
 
-  _SSDPSender(this.socket) {
-    _timer = Timer(const Duration(seconds: 5), _onTimerExpired);
+  _SSDPSender(this.socket, this.serviceName)
+      : _searchMessage = _buildMSearchMessage(serviceName) {
+    _timer = Timer.periodic(const Duration(seconds: 5), _onTimerExpired);
   }
 
   void onEvent(RawSocketEvent event) {
@@ -622,7 +629,13 @@ class _SSDPSender {
     _attemptWrite();
   }
 
-  void _onTimerExpired() {
+  void onError(Object error, StackTrace trace) {
+    _logger.warning("Error while sending M-SEARCH: $error", error, trace);
+    _logger.warning("Disabling this sender");
+    stop();
+  }
+
+  void _onTimerExpired(Timer timer) {
     _timerExpired = true;
     _attemptWrite();
   }
@@ -643,10 +656,30 @@ class _SSDPSender {
     }
   }
 
-  void _doWrite() {}
+  void _doWrite() {
+    _logger.finest("Sending M-SEARCH...");
+
+    final isIPv4 = socket.address.type == InternetAddressType.IPv4;
+    socket.send(
+      _searchMessage,
+      isIPv4
+          ? SSDPDiscovery.ssdpMulticastIPv4Address
+          : SSDPDiscovery.ssdpMulticastIPv6Address,
+      SSDPDiscovery.ssdpMulticastPort,
+    );
+  }
 
   /// Stops the sender
   void stop() {
     _timer.cancel();
   }
+
+  static Uint8List _buildMSearchMessage(String serviceName) => utf8.encode(
+        "M-SEARCH * HTTP/1.1\r\n"
+        "MX: 5\r\n"
+        "HOST: 239.255.255.250:1900\r\n"
+        "MAN: \"ssdp:discover\"\r\n"
+        "ST: $serviceName\r\n"
+        "\r\n",
+      );
 }

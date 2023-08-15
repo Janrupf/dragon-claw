@@ -34,9 +34,10 @@ function Convert-ToRtf {
 
 $ErrorActionPreference = "Stop"
 
+Run-BuildCommand -Command cargo -Arguments "build", "--release", "--target", "x86_64-pc-windows-msvc"
+
 Convert-ToRtf -InputFile .\LICENSE -OutputFile .\target\x86_64-pc-windows-msvc\release\LICENSE.rtf
 
-Run-BuildCommand -Command cargo -Arguments "build", "--release", "--target", "x86_64-pc-windows-msvc"
 Run-BuildCommand -Command wix -Arguments "extension", "add", "WixToolset.UI.wixext"
 Run-BuildCommand -Command wix -Arguments "extension", "add", "WixToolset.Firewall.wixext"
 Run-BuildCommand -Command wix -Arguments @(

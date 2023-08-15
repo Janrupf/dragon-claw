@@ -17,7 +17,8 @@
                     <ServiceInstall Name="DragonClawAgent" Type="ownProcess" Start="auto" ErrorControl="ignore"
                                     Account="LocalSystem"
                                     DisplayName="Dragon Claw Agent"
-                                    Description="The agent which allows remote control via the Dragon Claw App"/>
+                                    Description="The agent which allows remote control via the Dragon Claw App"
+                                    Vital="yes"/>
                     <ServiceControl Name="DragonClawAgent" Remove="uninstall" Start="install" Stop="uninstall"
                                     Wait="yes"/>
                     <firewall:FirewallException Name="Dragon Claw Agent" File="DragonClawAgentEXE" Protocol="tcp"

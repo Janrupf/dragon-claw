@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use crate::pal::discovery::DiscoveryManager;
 use crate::pal::power::PowerManager;
 use crate::pal::status::StatusManager;
@@ -97,6 +98,9 @@ pub enum PlatformAbstractionError {
     #[error("operation not supported")]
     Unsupported,
 }
+
+/// Fallback name used if the device name cannot be retrieved.
+pub(in crate::pal) const FALLBACK_NAME: Cow<'static, str> = Cow::Borrowed("Dragon Claw Computer");
 
 pub(in crate::pal) fn ctrl_c_shutdown_fut() -> ShutdownRequestFut {
     Box::pin(async {

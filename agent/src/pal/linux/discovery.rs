@@ -1,15 +1,17 @@
 use crate::pal::discovery::DiscoveryManager;
 use crate::pal::platform::dbus::avahi::{AvahiEntryGroupProxy, AvahiServer2Proxy};
 use crate::pal::platform::dbus::dbus_call;
-use crate::pal::PlatformAbstractionError;
+use crate::pal::{PlatformAbstractionError, FALLBACK_NAME};
 use crate::ssdp::{IpAddrWithScopeId, SSDPMulticast};
 use std::borrow::Cow;
+use std::ffi::CString;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use tokio::sync::Mutex;
 
 #[derive(Debug)]
 pub struct LinuxDiscoveryManager {
     avahi: Option<AvahiServer2Proxy<'static>>,
+    host_name: Cow<'static, str>,
     registered_dns_service: Mutex<Option<AvahiEntryGroupProxy<'static>>>,
     ssdp: Mutex<Option<SSDPMulticast>>,
 }
@@ -17,26 +19,62 @@ pub struct LinuxDiscoveryManager {
 impl LinuxDiscoveryManager {
     /// Attempts to connect to Avahi.
     pub async fn new(dbus_connection: &zbus::Connection) -> Self {
-        let avahi = match dbus_call!(AvahiServer2Proxy::new(dbus_connection)).await {
+        let (avahi, host_name) = match dbus_call!(AvahiServer2Proxy::new(dbus_connection)).await {
             Ok(avahi) => {
-                if let Err(err) = dbus_call!(avahi.get_version_string()).await {
-                    tracing::warn!("Failed to get Avahi version: {}", err);
-                    None
-                } else {
-                    Some(avahi)
-                }
+                let host_name = match dbus_call!(avahi.get_host_name()).await {
+                    Ok(v) => {
+                        tracing::info!("Host name: {}", v);
+                        Some(Cow::Owned(v))
+                    }
+                    Err(err) => {
+                        tracing::warn!("Failed to get host name: {}", err);
+                        None
+                    }
+                };
+                (Some(avahi), host_name)
             }
             Err(err) => {
                 tracing::warn!(
                     "Failed to connect to Avahi, mDNS discovery will be unavailable: {}",
                     err
                 );
-                None
+                (None, None)
             }
         };
 
+        // If avahi did not give us a host name, attempt to get it from libc
+        let host_name = host_name.unwrap_or_else(|| {
+            // Attempt to get hostname from libc
+            let mut buf = vec![0u8; 256];
+            if unsafe { libc::gethostname(buf.as_mut_ptr() as _, 255) } != 0 {
+                tracing::warn!(
+                    "Failed to call gethostname: {}",
+                    std::io::Error::last_os_error()
+                );
+                return FALLBACK_NAME;
+            }
+
+            // Make sure to always have null-terminated string
+            if buf[255] != 0 {
+                buf[255] = 0;
+            }
+
+            match CString::from_vec_with_nul(buf).map(|v| v.into_string()) {
+                Ok(Ok(v)) => Cow::Owned(v),
+                Ok(Err(err)) => {
+                    tracing::warn!("Failed to convert hostname to string: {}", err);
+                    FALLBACK_NAME
+                }
+                Err(err) => {
+                    tracing::warn!("Failed to convert hostname to string: {}", err);
+                    FALLBACK_NAME
+                }
+            }
+        });
+
         Self {
             avahi,
+            host_name,
             registered_dns_service: Mutex::new(None),
             ssdp: Mutex::new(None),
         }
@@ -51,15 +89,6 @@ impl LinuxDiscoveryManager {
         let version = dbus_call!(avahi.get_version_string()).await?;
         tracing::info!("Avahi version: {}", version);
 
-        let host_name = match dbus_call!(avahi.get_host_name()).await {
-            Ok(v) => Cow::Owned(v),
-            Err(err) => {
-                tracing::warn!("Failed to get host name: {}", err);
-                Cow::Borrowed("Dragon Claw Computer")
-            }
-        };
-        tracing::info!("Host name: {}", host_name);
-
         let group = dbus_call!(avahi.entry_group_new()).await?;
 
         dbus_call!(group.add_service(
@@ -69,7 +98,7 @@ impl LinuxDiscoveryManager {
                 SocketAddr::V6(_) => 1,
             },
             0,
-            &host_name,
+            &self.host_name,
             "_dragon-claw._tcp",
             None.into(),
             None.into(),
@@ -91,7 +120,9 @@ impl LinuxDiscoveryManager {
     async fn advertise_with_ssdp(&self, addr: SocketAddr) -> Result<(), PlatformAbstractionError> {
         self.stop_ssdp().await;
 
-        let multicast_manager = SSDPMulticast::setup(addr, Self::get_local_addresses).await?;
+        let multicast_manager =
+            SSDPMulticast::setup(self.host_name.to_string(), addr, Self::get_local_addresses)
+                .await?;
         self.ssdp.lock().await.replace(multicast_manager);
 
         Ok(())

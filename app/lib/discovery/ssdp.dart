@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:dragon_claw/discovery/agent.dart';
+import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 
 final _logger = Logger("ssdp:discovery");
@@ -20,6 +20,88 @@ enum SSDPStatus {
 
   /// The service is shutting down
   byebye
+}
+
+/// Standard headers used in SSDP messages.
+class SSDPStandardHeaders {
+  const SSDPStandardHeaders._();
+
+  // The service notification type
+  static final SSDPHeaderName nt = SSDPHeaderName.fromString("NT");
+
+  /// The service notification subtype
+  static final SSDPHeaderName nts = SSDPHeaderName.fromString("NTS");
+
+  /// The service location
+  static final SSDPHeaderName location = SSDPHeaderName.fromString("LOCATION");
+
+  /// The search target
+  static final SSDPHeaderName st = SSDPHeaderName.fromString("ST");
+
+  /// The unique service name
+  static final SSDPHeaderName usn = SSDPHeaderName.fromString("USN");
+}
+
+/// Header names used in SSDP messages.
+class SSDPHeaderName {
+  /// The raw header name.
+  final Uint8List raw;
+
+  const SSDPHeaderName(this.raw);
+
+  SSDPHeaderName.fromString(String name) : raw = utf8.encode(name);
+
+  /// The header name as a string.
+  String? get name {
+    try {
+      return utf8.decode(raw);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  @override
+  int get hashCode => Object.hashAll(raw);
+
+  @override
+  bool operator ==(Object other) {
+    if (other is SSDPHeaderName) {
+      return listEquals(raw, other.raw);
+    }
+
+    return false;
+  }
+}
+
+/// Header values used in SSDP messages.
+class SSDPHeaderValue {
+  /// The raw header value.
+  final Uint8List raw;
+
+  const SSDPHeaderValue(this.raw);
+
+  SSDPHeaderValue.fromString(String value) : raw = utf8.encode(value);
+
+  /// The header value as a string.
+  String? get value {
+    try {
+      return utf8.decode(raw);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  @override
+  int get hashCode => Object.hashAll(raw);
+
+  @override
+  bool operator ==(Object other) {
+    if (other is SSDPHeaderValue) {
+      return listEquals(raw, other.raw);
+    }
+
+    return false;
+  }
 }
 
 class SSDPDiscovery {
@@ -90,8 +172,9 @@ class SSDPDiscovery {
       return;
     }
 
+    // Register receivers on all receive sockets
     for (final socket in _receiveSockets) {
-      final receiver = _SSDPReceiver(socket, serviceName);
+      final receiver = _SSDPReceiver(socket, _onSSDPMessage);
       final subscription = socket.listen(receiver.onEvent);
       _socketSubscriptions.add(subscription);
     }
@@ -286,21 +369,86 @@ class SSDPDiscovery {
 
     return sockets;
   }
+
+  void _onSSDPMessage(
+    String httpMethod,
+    String uri,
+    String httpVersion,
+    Map<SSDPHeaderName, SSDPHeaderValue> headers,
+  ) {
+    if (httpMethod == "NOTIFY" &&
+        uri == "*" &&
+        httpVersion == "HTTP/1.1" &&
+        headers[SSDPStandardHeaders.nt]?.value == serviceName) {
+      // SSDP NOTIFY message for our service
+      final location = headers[SSDPStandardHeaders.location]?.value;
+      final subtype = headers[SSDPStandardHeaders.nts]?.value;
+
+      if (location == null || subtype == null) {
+        _logger.warning(
+          "Received NOTIFY message for service $serviceName, but it is missing "
+          "the location or subtype header",
+        );
+        return;
+      }
+
+      final locationUri = Uri.tryParse(location);
+      if (locationUri == null) {
+        _logger.warning(
+          "Received NOTIFY message for service $serviceName, but the location "
+          "header is not a valid URI: $location",
+        );
+        return;
+      }
+
+      final SSDPStatus status;
+      switch (subtype) {
+        case "ssdp:alive":
+          status = SSDPStatus.alive;
+          break;
+
+        case "ssdp:byebye":
+          status = SSDPStatus.byebye;
+          break;
+
+        default:
+          _logger.warning(
+            "Received NOTIFY message for service $serviceName, but it has an "
+            "unknown subtype: $subtype",
+          );
+          return;
+      }
+
+      // Construct the agent
+      final name =
+          headers[SSDPStandardHeaders.usn]?.value ?? "Dragon Claw Computer";
+      final agent = DiscoveredAgent(
+          name, InternetAddress(locationUri.host), locationUri.port);
+
+      // Notify the callback
+      callback(status, agent);
+    }
+  }
 }
+
+typedef _SSDPMessageReceivedCallback = void Function(
+  String httpMethod,
+  String uri,
+  String httpVersion,
+  Map<SSDPHeaderName, SSDPHeaderValue> headers,
+);
 
 /// Helper for receiving SSDP messages.
 class _SSDPReceiver {
   final Uint8List _messageEnd =
       Uint8List.fromList([13, 10, 13, 10] /* \r\n\r\n */);
   final Uint8List _lineEnd = Uint8List.fromList([13, 10] /* \r\n */);
-  final Uint8List _ssdpNT = Uint8List.fromList("NT".codeUnits);
-  final Uint8List _serviceName;
 
+  final _SSDPMessageReceivedCallback receivedCallback;
   final RawDatagramSocket socket;
   Uint8List? _buffer;
 
-  _SSDPReceiver(this.socket, String serviceName)
-      : _serviceName = Uint8List.fromList(serviceName.codeUnits);
+  _SSDPReceiver(this.socket, this.receivedCallback);
 
   void onEvent(RawSocketEvent event) async {
     if (event != RawSocketEvent.read) {
@@ -355,7 +503,7 @@ class _SSDPReceiver {
       String? httpMethod;
       String? uri;
       String? httpVersion;
-      final headers = <Uint8List, Uint8List>{}; // name -> value
+      final headers = HashMap<SSDPHeaderName, SSDPHeaderValue>();
 
       // Split the message into lines
       int lineEnd;
@@ -397,15 +545,13 @@ class _SSDPReceiver {
           // Insert the header into the map
           final key = _trimUint8List(line.sublist(0, indexOfColon));
           final value = _trimUint8List(line.sublist(indexOfColon + 1));
-          headers[key] = value;
+          headers[SSDPHeaderName(key)] = SSDPHeaderValue(value);
         }
       }
 
-      _logger.finest("Received SSDP message: $httpMethod $uri $httpVersion");
-      headers.forEach((key, value) {
-        _logger.finest(
-            ">> ${utf8.decode(key, allowMalformed: true)}: ${utf8.decode(value, allowMalformed: true)}");
-      });
+      if (httpMethod != null && uri != null && httpVersion != null) {
+        receivedCallback(httpMethod, uri, httpVersion, headers);
+      }
     }
   }
 

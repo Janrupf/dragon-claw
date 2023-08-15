@@ -118,6 +118,7 @@ impl SSDPMulticast {
     /// Set's up the SSDP multicast and begins SSDP multicast announcements
     /// for the given service address.
     pub async fn setup<F>(
+        usn: String,
         service_addr: SocketAddr,
         get_local_addresses: F,
     ) -> Result<Self, std::io::Error>
@@ -169,7 +170,7 @@ impl SSDPMulticast {
             .map(|v| v.notify.clone())
             .collect::<Vec<_>>();
 
-        let send_task = tokio::spawn(Self::send_task(send_tasks));
+        let send_task = tokio::spawn(Self::send_task(send_tasks, usn));
         let receive_task = tokio::spawn(Self::receive_task(receive_sockets, notifiers.clone()));
 
         let notifiers = SendTaskNotifiers {
@@ -341,7 +342,7 @@ impl SSDPMulticast {
         }
     }
 
-    fn build_ssdp_message(service_addr: SocketAddr, nts: &str) -> Vec<u8> {
+    fn build_ssdp_message(service_addr: SocketAddr, nts: &str, usn: &str) -> Vec<u8> {
         // Host to announce in the SSDP message
         let host = match service_addr.ip() {
             IpAddr::V4(_) => "239.255.255.250:1900",
@@ -363,6 +364,7 @@ impl SSDPMulticast {
             .header("CACHE-CONTROL", "max-age=30")
             .header("LOCATION", format!("tcp://{}", service_addr))
             .header("MAN", "\"ssdp:discover\"")
+            .header("USN", usn)
             .body(())
             .unwrap();
 
@@ -388,7 +390,7 @@ impl SSDPMulticast {
         Ok(())
     }
 
-    async fn send_task(sockets: Vec<SendTask>) {
+    async fn send_task(sockets: Vec<SendTask>, usn: String) {
         async fn send_loop(
             SendTask {
                 addr,
@@ -396,6 +398,7 @@ impl SSDPMulticast {
                 shutdown,
                 notify,
             }: SendTask,
+            usn: &str,
         ) {
             let port = match socket.local_addr() {
                 Ok(v) => v.port(),
@@ -410,7 +413,7 @@ impl SSDPMulticast {
             } else {
                 SSDP_MULTICAST_IPV6_SOCKET
             };
-            let alive_data = SSDPMulticast::build_ssdp_message(addr, "ssdp:alive");
+            let alive_data = SSDPMulticast::build_ssdp_message(addr, "ssdp:alive", usn);
 
             loop {
                 // Make sure we always write out the entire request
@@ -436,7 +439,7 @@ impl SSDPMulticast {
                 }
             }
 
-            let byebye_data = SSDPMulticast::build_ssdp_message(addr, "ssdp:byebye");
+            let byebye_data = SSDPMulticast::build_ssdp_message(addr, "ssdp:byebye", usn);
             if let Err(err) =
                 SSDPMulticast::send_all_to(&socket, &byebye_data, &multicast_address).await
             {
@@ -447,7 +450,7 @@ impl SSDPMulticast {
         }
 
         // Send SSDP requests on all sockets
-        futures::future::join_all(sockets.into_iter().map(send_loop)).await;
+        futures::future::join_all(sockets.into_iter().map(|t| send_loop(t, &usn))).await;
     }
 
     async fn receive_task(sockets: Vec<UdpSocket>, notifiers: Vec<Arc<Notify>>) {

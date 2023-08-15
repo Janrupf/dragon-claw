@@ -13,8 +13,8 @@ const _ssdpServiceName = "urn:dragon-claw:service:DragonClawAgent:1";
 final _log = Logger("discovery");
 
 class DragonClawAgentDiscovery with ChangeNotifier {
-  final List<DiscoveredAgent> _discoveredAgents = [];
-  final SSDPDiscovery _ssdp;
+  final Set<DiscoveredAgent> _discoveredAgents;
+  late final SSDPDiscovery _ssdp;
 
   /// Retrieves the current list of discovered agents.
   UnmodifiableListView<DiscoveredAgent> get discoveredAgents =>
@@ -22,9 +22,12 @@ class DragonClawAgentDiscovery with ChangeNotifier {
 
   nsd.Discovery? _mDNS;
 
-  DragonClawAgentDiscovery()
-      : _ssdp =
-            SSDPDiscovery(serviceName: _ssdpServiceName, callback: (a, b) {});
+  DragonClawAgentDiscovery() : _discoveredAgents = HashSet() {
+    _ssdp = SSDPDiscovery(
+      serviceName: _ssdpServiceName,
+      callback: _onSSDPMessage,
+    );
+  }
 
   /// Starts the discovery process.
   void start() async {
@@ -51,19 +54,45 @@ class DragonClawAgentDiscovery with ChangeNotifier {
         return;
       }
 
+      final bool alive;
       switch (status) {
         case nsd.ServiceStatus.found:
-          _discoveredAgents.add(agent);
+          alive = true;
           break;
 
         case nsd.ServiceStatus.lost:
-          _discoveredAgents.remove(agent);
+          alive = false;
           break;
       }
 
-      _log.finest("New list of discovered agents: $_discoveredAgents");
-      notifyListeners();
+      _onAgentChanged(alive, agent);
     });
+  }
+
+  void _onSSDPMessage(SSDPStatus status, DiscoveredAgent agent) {
+    final bool alive;
+    switch (status) {
+      case SSDPStatus.alive:
+        alive = true;
+        break;
+
+      case SSDPStatus.byebye:
+        alive = false;
+        break;
+    }
+
+    _onAgentChanged(alive, agent);
+  }
+
+  void _onAgentChanged(bool alive, DiscoveredAgent agent) {
+    if (alive) {
+      _discoveredAgents.add(agent);
+    } else {
+      _discoveredAgents.remove(agent);
+    }
+
+    _log.finest("New list of discovered agents: $_discoveredAgents");
+    notifyListeners();
   }
 
   void stop() async {

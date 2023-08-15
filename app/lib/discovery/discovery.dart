@@ -2,39 +2,46 @@ import 'dart:collection';
 import 'dart:io';
 
 import 'package:dragon_claw/discovery/agent.dart';
+import 'package:dragon_claw/discovery/ssdp.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:nsd/nsd.dart' as nsd;
 
-const _dragonClawAgentServiceName = "_dragon-claw._tcp";
+const _mDNSServiceName = "_dragon-claw._tcp";
+const _ssdpServiceName = "urn:dragon-claw:service:DragonClawAgent:1";
 
 final _log = Logger("discovery");
 
 class DragonClawAgentDiscovery with ChangeNotifier {
   final List<DiscoveredAgent> _discoveredAgents = [];
+  final SSDPDiscovery _ssdp;
 
   /// Retrieves the current list of discovered agents.
   UnmodifiableListView<DiscoveredAgent> get discoveredAgents =>
       UnmodifiableListView(_discoveredAgents);
 
-  nsd.Discovery? _discovery;
+  nsd.Discovery? _mDNS;
 
-  DragonClawAgentDiscovery();
+  DragonClawAgentDiscovery()
+      : _ssdp =
+            SSDPDiscovery(serviceName: _ssdpServiceName, callback: (a, b) {});
 
   /// Starts the discovery process.
   void start() async {
-    if (_discovery != null) {
+    if (_mDNS != null) {
       _log.warning("Discovery already running, ignoring start() call.");
       return;
     }
     _log.fine("Starting network discovery of agents...");
 
-    _discovery = await nsd.startDiscovery(
-      _dragonClawAgentServiceName,
+    _mDNS = await nsd.startDiscovery(
+      _mDNSServiceName,
       ipLookupType: nsd.IpLookupType.any,
     );
 
-    _discovery!.addServiceListener((service, status) {
+    await _ssdp.start();
+
+    _mDNS!.addServiceListener((service, status) {
       _log.fine("Service $service changed status to $status");
       final agent = _mapServiceToAgent(service);
 
@@ -60,14 +67,16 @@ class DragonClawAgentDiscovery with ChangeNotifier {
   }
 
   void stop() async {
-    if (_discovery == null) {
+    _ssdp.stop();
+
+    if (_mDNS == null) {
       _log.warning("Discovery not running, ignoring stop() call.");
       return;
     }
 
     _log.fine("Stopping network discovery of agents...");
-    await nsd.stopDiscovery(_discovery!);
-    _discovery = null;
+    await nsd.stopDiscovery(_mDNS!);
+    _mDNS = null;
   }
 
   DiscoveredAgent? _mapServiceToAgent(nsd.Service service) {

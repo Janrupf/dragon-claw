@@ -19,7 +19,7 @@ const SSDP_MULTICAST_IPV6: Ipv6Addr = Ipv6Addr::new(0xff05, 0, 0, 0, 0, 0, 0, 0x
 const SSDP_MULTICAST_IPV6_SOCKET: SocketAddr =
     SocketAddr::V6(SocketAddrV6::new(SSDP_MULTICAST_IPV6, 1900, 0, 0));
 
-const SSDP_SERVICE_TYPE: &str = "urn:dragon-claw-org:service:DragonClawAgent:1";
+const SSDP_SERVICE_TYPE: &str = "urn:dragon-claw:service:DragonClawAgent:1";
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum IpAddrWithScopeId {
@@ -82,7 +82,7 @@ struct SendTask {
     socket: UdpSocket,
     shutdown: Arc<AtomicBool>,
     notify: Arc<Notify>,
-    addr: IpAddrWithScopeId,
+    addr: SocketAddr,
 }
 
 impl SendTask {
@@ -90,7 +90,7 @@ impl SendTask {
         socket: UdpSocket,
         shutdown: Arc<AtomicBool>,
         notify: Arc<Notify>,
-        addr: IpAddrWithScopeId,
+        addr: SocketAddr,
     ) -> Self {
         Self {
             socket,
@@ -146,12 +146,14 @@ impl SSDPMulticast {
             &mut receive_sockets,
             &mut send_tasks,
             shutdown.clone(),
+            service_addr.port(),
         );
         Self::bind_multicast_sockets(
             &local_ipv6,
             &mut receive_sockets,
             &mut send_tasks,
             shutdown.clone(),
+            service_addr.port(),
         );
 
         if receive_sockets.is_empty() {
@@ -187,6 +189,7 @@ impl SSDPMulticast {
         receive_sockets: &mut Vec<UdpSocket>,
         send_tasks: &mut Vec<SendTask>,
         shutdown: Arc<AtomicBool>,
+        service_port: u16,
     ) {
         let receiver =
             match Self::bind_multicast_receiver(local_addresses).and_then(Self::socket2_to_tokio) {
@@ -200,7 +203,14 @@ impl SSDPMulticast {
                 .iter()
                 .map(|&a| Self::bind_multicast_sender(a).map(|v| (a, v)))
                 .filter_map(|v| v.and_then(|(a, v)| Self::socket2_to_tokio(v).map(|v| (a, v))))
-                .map(|(a, s)| SendTask::new(s, shutdown.clone(), Arc::new(Notify::new()), a)),
+                .map(|(a, s)| {
+                    SendTask::new(
+                        s,
+                        shutdown.clone(),
+                        Arc::new(Notify::new()),
+                        a.to_socket_addr(service_port),
+                    )
+                }),
         );
 
         if len_before == send_tasks.len() {
@@ -395,34 +405,29 @@ impl SSDPMulticast {
                 }
             };
 
-            let service_addr = addr.to_socket_addr(port);
-            let multicast_address = if service_addr.is_ipv4() {
+            let multicast_address = if addr.is_ipv4() {
                 SSDP_MULTICAST_IPV4_SOCKET
             } else {
                 SSDP_MULTICAST_IPV6_SOCKET
             };
-            let alive_data = SSDPMulticast::build_ssdp_message(service_addr, "ssdp:alive");
+            let alive_data = SSDPMulticast::build_ssdp_message(addr, "ssdp:alive");
 
             loop {
                 // Make sure we always write out the entire request
                 if let Err(err) =
                     SSDPMulticast::send_all_to(&socket, &alive_data, &multicast_address).await
                 {
-                    tracing::warn!(
-                        "Failed to send SSDP alive request for {}: {}",
-                        service_addr,
-                        err
-                    );
+                    tracing::warn!("Failed to send SSDP alive request for {}: {}", addr, err);
                 }
                 tracing::trace!(
                     "Sent SSDP request for {}, sleeping for 30 seconds (or until notify)",
-                    service_addr
+                    addr
                 );
 
                 // Send SSDP request every 30 seconds or until we are notified
-                tokio::join!(
-                    tokio::time::sleep(std::time::Duration::from_secs(5)),
-                    notify.notified()
+                tokio::select!(
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(30)) => {},
+                    _ = notify.notified() => {},
                 );
 
                 if shutdown.load(Ordering::Acquire) {
@@ -431,14 +436,13 @@ impl SSDPMulticast {
                 }
             }
 
-            // TODO: Send ssdp:byebye
-            let byebye_data = SSDPMulticast::build_ssdp_message(service_addr, "ssdp:byebye");
+            let byebye_data = SSDPMulticast::build_ssdp_message(addr, "ssdp:byebye");
             if let Err(err) =
                 SSDPMulticast::send_all_to(&socket, &byebye_data, &multicast_address).await
             {
                 tracing::warn!("Failed to send SSDP byebye request: {}", err);
             } else {
-                tracing::debug!("Sent SSDP byebye request for {}", service_addr);
+                tracing::debug!("Sent SSDP byebye request for {}", addr);
             }
         }
 
@@ -527,7 +531,7 @@ impl SSDPMulticast {
         });
         data.extend_from_slice(b"\r\n");
         for (name, value) in request.headers() {
-            data.extend_from_slice(name.as_str().as_bytes());
+            data.extend_from_slice(name.as_str().to_uppercase().as_bytes());
             data.extend_from_slice(b": ");
             data.extend_from_slice(value.as_bytes());
             data.extend_from_slice(b"\r\n");
@@ -544,7 +548,8 @@ impl SSDPMulticast {
 
         loop {
             let Some(end_of_response) = Self::find_subsequence(data, b"\r\n\r\n") else { break };
-            let mut response_data = &data[..end_of_response];
+            // Keep the \r\n so we can detect end of lines
+            let mut response_data = &data[..(end_of_response + 2)];
 
             let mut request = http::Request::builder();
             let mut begin_found = false;
@@ -620,11 +625,15 @@ impl SSDPMulticast {
     /// The way this is defined may seem a bit weird first, but this allows the compiler to
     /// apply a good chunk of optimizations to this function.
     fn find_subsequence<const SIZE: usize>(data: &[u8], sequence: &[u8; SIZE]) -> Option<usize> {
+        if data.len() < SIZE {
+            return None;
+        }
+
         let mut search_index = 0;
         let searchable_len = data.len() - SIZE;
 
-        while search_index < searchable_len {
-            // Construct a slice of the next 4 bytes
+        while search_index <= searchable_len {
+            // Construct a slice of the next SIZE bytes
             let search_slice = &data[search_index..search_index + SIZE];
             if search_slice == sequence {
                 return Some(search_index);

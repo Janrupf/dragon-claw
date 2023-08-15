@@ -23,7 +23,7 @@ class _AddDeviceDialogState extends State<AddDeviceDialog> {
 
   final _nameController = TextEditingController();
   final _addressController = TextEditingController();
-  final _portController = TextEditingController();
+  final _portController = TextEditingController(text: "37121");
 
   @override
   void initState() {

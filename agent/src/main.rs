@@ -92,7 +92,7 @@ async fn runner(
 ) -> Result<(), DragonClawAgentError> {
     tracing::debug!("Binding TCP listener...");
     let any_host = Ipv4Addr::new(0, 0, 0, 0);
-    let socket_addr = SocketAddrV4::new(any_host, 0);
+    let socket_addr = SocketAddrV4::new(any_host, 37121);
 
     let listener = TcpListener::bind(socket_addr).await?;
     let local_addr = listener.local_addr()?;

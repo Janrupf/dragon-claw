@@ -90,7 +90,7 @@ class _DeviceListState extends State<DeviceList> {
             agent.name,
             style: theme.headlineSmall,
           ),
-          subtitle: Text(agent.address.address),
+          subtitle: Text("${agent.address.address}:${agent.port}"),
           trailing: _buildTrailing(agents[index]),
         ),
       ),

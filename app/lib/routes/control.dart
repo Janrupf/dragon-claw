@@ -36,7 +36,7 @@ class ControlScreen extends StatefulWidget {
 class _ControlScreenState extends State<ControlScreen> {
   static final AgentVersion expectedAgentVersion = AgentVersion()
     ..major = 1
-    ..minor = 0
+    ..minor = 1
     ..patch = 0;
 
   _AvailableOptions? _availableOptions;

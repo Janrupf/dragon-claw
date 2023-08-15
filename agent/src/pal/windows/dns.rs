@@ -1,3 +1,4 @@
+use crate::pal::platform::name::ComputerName;
 use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::sync::Mutex;
@@ -27,61 +28,19 @@ pub struct ServiceDnsRegistration {
 }
 
 impl ServiceDnsRegistration {
-    pub fn create(addr: SocketAddr) -> Result<Self, Win32Error> {
-        let mut host_name = unsafe {
-            // Retrieve required buffer length
-            let mut buffer_size = 0;
-            if !GetComputerNameExW(ComputerNameDnsHostname, PWSTR::null(), &mut buffer_size)
-                .as_bool()
-            {
-                let err = Win32Error::from_win32();
-                // ERROR_MORE_DATA is ok, everything else is fatal
-                if err != Win32Error::from(ERROR_MORE_DATA) {
-                    tracing::error!("Failed to retrieve buffer length for DNS hostname: {}", err);
-                    return Err(err);
-                }
-            }
-
-            // Use a Vec as a memory buffer for a PWSTR
-            // We also directly reserve 6 bytes more so we later can append .local without
-            // reallocation
-            let mut buffer = Vec::with_capacity((buffer_size as usize) + 6);
-
-            if !GetComputerNameExW(
-                ComputerNameDnsHostname,
-                PWSTR::from_raw(buffer.as_mut_ptr()),
-                &mut buffer_size,
-            )
-            .as_bool()
-            {
-                let err = Win32Error::from_win32();
-                tracing::error!("Failed to retrieve DNS hostname: {}", err);
-                return Err(err);
-            }
-
-            // Set the real length, this will cut the null terminator, but since
-            // we are first using this buffer as a Rust slice and then later manually
-            // append .local\0, this is not a problem
-            buffer.set_len(buffer_size as usize);
-
-            buffer
-        };
-
-        // Prepare a buffer to store the name into
-        let computer_name = match String::from_utf16(&host_name) {
-            Ok(v) => Cow::Owned(v),
-            Err(err) => {
-                tracing::warn!("Failed to convert computer name to UTF-8: {}", err);
-                Cow::Borrowed("Dragon Claw Computer")
-            }
-        };
+    pub fn create(
+        addr: SocketAddr,
+        computer_name: ComputerName,
+        service_name: &str,
+    ) -> Result<Self, Win32Error> {
+        let mut host_name = computer_name.into_dns_host_name();
 
         // Append .local to host name
         host_name.extend(".local".encode_utf16());
         host_name.push(0);
 
         // Format and encode to UTF-16
-        let service_instance_name = format!("{computer_name}._dragon-claw._tcp.local");
+        let service_instance_name = format!("{service_name}._dragon-claw._tcp.local");
         tracing::trace!("Service name: {}", service_instance_name);
 
         let service_instance_name = service_instance_name

@@ -1,5 +1,6 @@
 mod discovery;
 mod dns;
+mod name;
 mod power;
 mod process;
 mod service;
@@ -128,8 +129,8 @@ impl PlatformAbstractionLayer for PlatformAbstractionImpl {
 
     type DiscoveryManager = WindowsDiscoveryManager;
 
-    fn discovery_manager(&self) -> Option<&Self::DiscoveryManager> {
-        Some(&self.discovery_manager)
+    fn discovery_manager(&self) -> &Self::DiscoveryManager {
+        &self.discovery_manager
     }
 
     type StatusManager = WindowsStatusManager;

@@ -241,15 +241,29 @@ impl SSDPMulticast {
 
             // Bind the socket to the multicast address
             match domain {
+                #[cfg(not(windows))]
                 Domain::IPV4 => {
                     socket.bind(&SSDP_MULTICAST_IPV4_SOCKET.into())?;
                     #[cfg(unix)]
                     socket.set_multicast_loop_v4(false)?;
                 }
+                #[cfg(windows)]
+                Domain::IPV4 => {
+                    // Windows fails with "Address not valid in this context" when trying to bind
+                    // to a specific multicast group - so we bind to the wildcard address instead.
+                    socket.bind(&SSDP_ANY_IPV4_SOCKET.into())?;
+                }
+                #[cfg(not(windows))]
                 Domain::IPV6 => {
                     socket.bind(&SSDP_MULTICAST_IPV6_SOCKET.into())?;
                     #[cfg(unix)]
                     socket.set_multicast_loop_v6(false)?;
+                }
+                #[cfg(windows)]
+                Domain::IPV6 => {
+                    // Windows fails with "Address not valid in this context" when trying to bind
+                    // to a specific multicast group - so we bind to the wildcard address instead.
+                    socket.bind(&SSDP_ANY_IPV6_SOCKET.into())?;
                 }
                 _ => unreachable!(),
             }
@@ -400,14 +414,6 @@ impl SSDPMulticast {
             }: SendTask,
             usn: &str,
         ) {
-            let port = match socket.local_addr() {
-                Ok(v) => v.port(),
-                Err(err) => {
-                    tracing::warn!("Failed to get local port: {}", err);
-                    return;
-                }
-            };
-
             let multicast_address = if addr.is_ipv4() {
                 SSDP_MULTICAST_IPV4_SOCKET
             } else {

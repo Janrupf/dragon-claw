@@ -128,6 +128,7 @@ impl LinuxDiscoveryManager {
         Ok(())
     }
 
+    //noinspection DuplicatedCode <- windows implementation
     async fn stop_ssdp(&self) {
         if let Some(ssdp) = self.ssdp.lock().await.take() {
             // Stop all the SSDP multicast sockets

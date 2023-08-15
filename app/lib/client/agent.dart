@@ -1,12 +1,20 @@
 import 'dart:io';
 
 /// Discovered dragon claw agent.
-class DiscoveredAgent {
+class KnownAgent {
   final String name;
   final InternetAddress address;
   final int port;
 
-  DiscoveredAgent(this.name, this.address, this.port);
+  /// If [true], the agent was automatically discovered using network discovery.
+  /// Otherwise it was manually added.
+  final bool discovered;
+
+  KnownAgent.discovered(this.name, this.address, this.port) : discovered = true;
+
+  KnownAgent.manual(this.name, this.address, this.port) : discovered = false;
+
+  KnownAgent toManual() => KnownAgent.manual(name, address, port);
 
   @override
   String toString() {
@@ -18,7 +26,7 @@ class DiscoveredAgent {
 
   @override
   bool operator ==(Object other) =>
-      other is DiscoveredAgent &&
+      other is KnownAgent &&
       other.name == name &&
       other.address == address &&
       other.port == port;

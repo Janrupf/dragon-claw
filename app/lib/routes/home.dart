@@ -1,4 +1,6 @@
-import 'package:dragon_claw/components/discovery_list.dart';
+import 'package:dragon_claw/client/agent_store.dart';
+import 'package:dragon_claw/components/add_device_dialog.dart';
+import 'package:dragon_claw/components/device_list.dart';
 import 'package:dragon_claw/updater/updater.dart';
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
@@ -16,12 +18,14 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   late final AppUpdater _updater;
+  late final KnownAgentStore _store;
   AvailableUpdate? _update;
 
   @override
   void initState() {
     super.initState();
     _updater = Provider.of<AppUpdater>(context, listen: false);
+    _store = KnownAgentStore();
 
     _checkForUpdates();
   }
@@ -34,8 +38,12 @@ class _HomeScreenState extends State<HomeScreen> {
             style: Theme.of(context).textTheme.headlineLarge,
           ),
         ),
-        body: const DiscoveryList(),
+        body: DeviceList(store: _store),
         bottomSheet: _buildUpdateSheet(context),
+        floatingActionButton: FloatingActionButton(
+          onPressed: () => _onAddPressed(context),
+          child: const Icon(Icons.add),
+        ),
       );
 
   Widget? _buildUpdateSheet(BuildContext context) {
@@ -90,5 +98,13 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ));
     }
+  }
+
+  void _onAddPressed(BuildContext context) {
+    showDialog(
+        context: context,
+        builder: (context) {
+          return AddDeviceDialog(store: _store);
+        });
   }
 }

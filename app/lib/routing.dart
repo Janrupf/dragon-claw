@@ -1,8 +1,7 @@
-import 'package:dragon_claw/discovery/agent.dart';
+import 'package:dragon_claw/client/agent.dart';
 import 'package:dragon_claw/routes/control.dart';
+import 'package:dragon_claw/routes/home.dart';
 import 'package:go_router/go_router.dart';
-
-import 'routes/home.dart';
 
 class DragonClawRouter {
   /// Global instance of the router.
@@ -11,7 +10,7 @@ class DragonClawRouter {
     GoRoute(
         path: "/control",
         builder: (context, state) {
-          final agent = state.extra as DiscoveredAgent;
+          final agent = state.extra as KnownAgent;
 
           return ControlScreen(agent: agent);
         }),

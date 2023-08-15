@@ -1,7 +1,7 @@
 import 'dart:collection';
 import 'dart:io';
 
-import 'package:dragon_claw/discovery/agent.dart';
+import 'package:dragon_claw/client/agent.dart';
 import 'package:dragon_claw/discovery/ssdp.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
@@ -13,11 +13,11 @@ const _ssdpServiceName = "urn:dragon-claw:service:DragonClawAgent:1";
 final _log = Logger("discovery");
 
 class DragonClawAgentDiscovery with ChangeNotifier {
-  final Set<DiscoveredAgent> _discoveredAgents;
+  final Set<KnownAgent> _discoveredAgents;
   late final SSDPDiscovery _ssdp;
 
   /// Retrieves the current list of discovered agents.
-  UnmodifiableListView<DiscoveredAgent> get discoveredAgents =>
+  UnmodifiableListView<KnownAgent> get discoveredAgents =>
       UnmodifiableListView(_discoveredAgents);
 
   nsd.Discovery? _mDNS;
@@ -69,7 +69,7 @@ class DragonClawAgentDiscovery with ChangeNotifier {
     });
   }
 
-  void _onSSDPMessage(SSDPStatus status, DiscoveredAgent agent) {
+  void _onSSDPMessage(SSDPStatus status, KnownAgent agent) {
     final bool alive;
     switch (status) {
       case SSDPStatus.alive:
@@ -84,7 +84,7 @@ class DragonClawAgentDiscovery with ChangeNotifier {
     _onAgentChanged(alive, agent);
   }
 
-  void _onAgentChanged(bool alive, DiscoveredAgent agent) {
+  void _onAgentChanged(bool alive, KnownAgent agent) {
     if (alive) {
       _discoveredAgents.add(agent);
     } else {
@@ -108,7 +108,7 @@ class DragonClawAgentDiscovery with ChangeNotifier {
     _mDNS = null;
   }
 
-  DiscoveredAgent? _mapServiceToAgent(nsd.Service service) {
+  KnownAgent? _mapServiceToAgent(nsd.Service service) {
     final serviceAddress = service.addresses?.fold<InternetAddress?>(null,
         (previousValue, element) {
       // Prefer IPv4 addresses
@@ -130,7 +130,7 @@ class DragonClawAgentDiscovery with ChangeNotifier {
       return null;
     }
 
-    return DiscoveredAgent(
+    return KnownAgent.discovered(
       service.name ?? "<unknown>",
       serviceAddress,
       service.port!,

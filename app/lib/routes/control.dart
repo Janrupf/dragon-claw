@@ -1,7 +1,7 @@
+import 'package:dragon_claw/client/agent.dart';
 import 'package:dragon_claw/client/agent_client.dart';
 import 'package:dragon_claw/components/action.dart';
 import 'package:dragon_claw/components/control/power_action_sheet.dart';
-import 'package:dragon_claw/discovery/agent.dart';
 import 'package:flutter/material.dart';
 import 'package:grpc/grpc.dart';
 import 'package:logging/logging.dart';
@@ -21,7 +21,7 @@ class _AvailableOptions {
 }
 
 class ControlScreen extends StatefulWidget {
-  final DiscoveredAgent agent;
+  final KnownAgent agent;
 
   /// The client constructed from the agent
   final DragonClawAgentClient _client;

@@ -3,7 +3,7 @@ import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:dragon_claw/discovery/agent.dart';
+import 'package:dragon_claw/client/agent.dart';
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 
@@ -11,7 +11,7 @@ final _logger = Logger("ssdp:discovery");
 
 /// Callback for when a new agent is discovered.
 typedef SSDPDiscoveryCallback = void Function(
-    SSDPStatus status, DiscoveredAgent agent);
+    SSDPStatus status, KnownAgent agent);
 
 /// Status associated with an SSDP message.
 enum SSDPStatus {
@@ -426,7 +426,7 @@ class SSDPDiscovery {
       // Construct the agent
       final name =
           headers[SSDPStandardHeaders.usn]?.value ?? "Dragon Claw Computer";
-      final agent = DiscoveredAgent(
+      final agent = KnownAgent.discovered(
           name, InternetAddress(locationUri.host), locationUri.port);
 
       // Notify the callback

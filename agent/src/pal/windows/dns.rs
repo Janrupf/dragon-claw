@@ -1,17 +1,13 @@
 use crate::pal::platform::name::ComputerName;
-use std::borrow::Cow;
 use std::net::SocketAddr;
 use std::sync::Mutex;
 use tokio::sync::oneshot::{Receiver as OneshotReceiver, Sender as OneshotSender};
-use windows::core::{Error as Win32Error, PCWSTR, PWSTR};
-use windows::Win32::Foundation::{
-    DNS_REQUEST_PENDING, ERROR_MORE_DATA, ERROR_SUCCESS, HANDLE, WIN32_ERROR,
-};
+use windows::core::{Error as Win32Error, PCWSTR};
+use windows::Win32::Foundation::{DNS_REQUEST_PENDING, ERROR_SUCCESS, HANDLE, WIN32_ERROR};
 use windows::Win32::NetworkManagement::Dns::{
     DnsServiceConstructInstance, DnsServiceDeRegister, DnsServiceFreeInstance, DnsServiceRegister,
     DNS_QUERY_REQUEST_VERSION1, DNS_SERVICE_INSTANCE, DNS_SERVICE_REGISTER_REQUEST, IP6_ADDRESS,
 };
-use windows::Win32::System::SystemInformation::{ComputerNameDnsHostname, GetComputerNameExW};
 
 #[derive(Debug)]
 struct DnsRegistrationContextInner {
